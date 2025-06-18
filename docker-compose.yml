@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  cf-clearance-scraper:
+    build: .
+    container_name: cf-clearance-scraper
+    ports:
+      - "3030:3030"
+    environment:
+      - PORT=3030
+      - browserLimit=25
+      - timeOut=60000
+      - memoryCleanupInterval=300000
+      - maxMemoryUsage=512
+    restart: unless-stopped
+    # 增加共享内存大小，确保 Chromium 运行正常
+    shm_size: '2gb'
+    # 限制内存使用
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G 
