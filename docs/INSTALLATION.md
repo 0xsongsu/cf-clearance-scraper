@@ -2,31 +2,15 @@
 
 专业的 Cloudflare 保护绕过工具，支持 Turnstile 令牌生成和 cf_clearance Cookie 获取。
 
-## 🚀 一键部署（推荐）
-
-### Mac 系统
-双击运行 `一键部署-MAC.command`
-
-**如果遇到"未打开"错误**:
-1. 右键点击 `一键部署-MAC.command` → 选择"打开"
-2. 在弹出的安全提示中点击"打开"
-3. 或者在终端中运行: `chmod +x 一键部署-MAC.command && xattr -d com.apple.quarantine 一键部署-MAC.command`
-
-### Windows 系统
-双击运行 `一键部署-WIN.bat`
-
-### ✨ 特性
-- ✅ 全自动安装 Node.js、Chrome、项目依赖
+## ✨ 核心特性
 - ✅ 智能内存和容量管理，零配置启动
 - ✅ 自动配置网络访问权限
 - ✅ 支持局域网多设备访问
 - ✅ 实时监控面板
+- ✅ 高性能并发处理
+- ✅ 自动故障恢复
 
-### 🎯 快速启动（已部署用户）
-- **Mac**: 双击 `start-mac.command`
-- **Windows**: 双击 `start-windows.bat`
-
-## 🛠️ 手动安装
+## 🛠️ 快速安装
 
 ### 环境要求
 
@@ -35,7 +19,7 @@
 - **内存**: 至少 1GB 可用内存
 - **Chrome/Chromium**: 自动安装或使用系统版本
 
-### 快速开始
+### 三步快速开始
 
 ```bash
 # 1. 克隆仓库
@@ -47,10 +31,9 @@ npm install
 
 # 3. 启动服务（零配置）
 npm start
-
-# 4. 访问监控面板
-# 浏览器打开: http://localhost:3000/monitor
 ```
+
+🎉 **完成！** 服务已启动，访问 http://localhost:3000/monitor 查看监控面板
 
 ### 验证安装
 
@@ -75,6 +58,12 @@ curl -X POST http://localhost:3000/ \
     "websiteUrl": "https://loyalty.campnetwork.xyz/home"
   }'
 ```
+
+### 🎯 快速访问
+
+- **监控面板**: http://localhost:3000/monitor
+- **健康检查**: http://localhost:3000/health
+- **API文档**: 查看 [docs/API.md](API.md)
 
 ## 🐳 Docker 部署
 
@@ -121,7 +110,7 @@ docker logs -f cf-clearance-scraper
 git clone https://github.com/0xsongsu/cf-clearance-scraper.git
 cd cf-clearance-scraper
 
-# 2. 安装依赖
+# 2. 安装依赖（生产环境）
 npm ci --production
 
 # 3. 启用性能优化
@@ -129,7 +118,7 @@ node --expose-gc start.js
 
 # 4. 或使用 PM2 管理进程
 npm install -g pm2
-pm2 start ecosystem.config.js
+pm2 start start.js --name cf-clearance-scraper
 ```
 
 ### 生产环境部署
@@ -152,15 +141,14 @@ git clone https://github.com/0xsongsu/cf-clearance-scraper.git
 cd cf-clearance-scraper
 npm install --production
 
-# 5. 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件设置生产配置
-
-# 6. 使用 PM2 启动
+# 5. 使用 PM2 启动（推荐）
 npm install -g pm2
 pm2 start start.js --name cf-clearance-scraper
 pm2 startup
 pm2 save
+
+# 6. 配置防火墙（可选）
+sudo ufw allow 3000
 ```
 
 ## 🚨 故障排除
@@ -204,9 +192,8 @@ echo "MAX_MEMORY_USAGE=1024" >> .env
 
 #### 4. **权限问题**
 ```bash
-# 给予执行权限
-chmod +x start-mac.command  # Mac
-chmod +x 一键部署-MAC.command
+# 给予执行权限（如果需要）
+chmod +x start.js
 
 # 或使用 sudo 运行
 sudo npm start
@@ -235,15 +222,16 @@ nvm install --lts
 nvm use --lts
 ```
 
-#### 3. **权限问题**
+#### 3. **依赖安装失败**
 ```bash
-# Linux/Mac 给执行权限
-chmod +x 一键部署-MAC.command
-chmod +x start-mac.command
+# 清理缓存重新安装
+npm cache clean --force
+rm -rf node_modules package-lock.json
+npm install
 
-# Mac 移除隔离标记
-xattr -d com.apple.quarantine 一键部署-MAC.command
-xattr -d com.apple.quarantine start-mac.command
+# 或使用 yarn
+npm install -g yarn
+yarn install
 ```
 
 ## ✅ 验证安装
@@ -278,4 +266,12 @@ open http://localhost:3000/monitor
 - 📖 [配置指南](CONFIGURATION.md) - 了解智能配置和优化
 - 🔧 [API文档](API.md) - 学习完整的接口使用
 - 📊 [性能优化](PERFORMANCE_OPTIMIZATION.md) - 深入了解性能特性
-- � [故障排除](TROUBLESHOOTING.md) - 解决常见问题
+- 🛠️ [故障排除](TROUBLESHOOTING.md) - 解决常见问题
+- 📚 [使用教程](TUTORIAL.md) - 详细使用指南
+
+## 💡 小贴士
+
+- 首次启动可能需要下载 Chrome 浏览器，请耐心等待
+- 建议在生产环境中使用 PM2 管理进程
+- 定期查看监控面板了解服务状态
+- 遇到问题请先查看故障排除文档
