@@ -253,13 +253,44 @@ async function handleClearanceRequest(req, res, data) {
                 result = await getCfClearance(data).then(res => {
                     // 如果返回的是字符串（旧格式），转换为新格式
                     if (typeof res === 'string') {
-                        return { cf_clearance: res, code: 200 };
+                        return {
+                            code: 200,
+                            message: "cf_clearance cookie obtained successfully",
+                            headers: {
+                                cookie: res,
+                                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            }
+                        };
                     }
-                    // 如果返回的是对象（新格式），直接使用
-                    return { ...res, code: 200 };
+                    // 如果返回的是对象（新格式），转换为规范格式
+                    const cookieString = res.cookies ?
+                        res.cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ') :
+                        (res.cf_clearance ? `cf_clearance=${res.cf_clearance}` : '');
+
+                    return {
+                        code: 200,
+                        message: "cf_clearance cookie obtained successfully",
+                        headers: {
+                            cookie: cookieString,
+                            "user-agent": res.headers?.['User-Agent'] || res.headers?.['user-agent'] || "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "accept": res.headers?.Accept || "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                            "accept-language": res.headers?.['Accept-Language'] || "en-US,en;q=0.9",
+                            "accept-encoding": res.headers?.['Accept-Encoding'] || "gzip, deflate, br",
+                            "cache-control": res.headers?.['Cache-Control'] || "max-age=0",
+                            "sec-fetch-dest": res.headers?.['Sec-Fetch-Dest'] || "document",
+                            "sec-fetch-mode": res.headers?.['Sec-Fetch-Mode'] || "navigate",
+                            "sec-fetch-site": res.headers?.['Sec-Fetch-Site'] || "none",
+                            "sec-fetch-user": res.headers?.['Sec-Fetch-User'] || "?1",
+                            "upgrade-insecure-requests": res.headers?.['Upgrade-Insecure-Requests'] || "1"
+                        }
+                    };
                 }).catch(err => {
                     console.error('getCfClearance error:', err.message);
-                    return { code: 500, message: err.message }
+                    return {
+                        code: 500,
+                        message: err.message,
+                        headers: {}
+                    }
                 })
                 break;
             default:

@@ -12,7 +12,7 @@ const TEST_CONFIG = {
         timeout: 120000 // 2分钟超时
     },
     cf5s: {
-        websiteUrl: 'https://loyalty.campnetwork.xyz/home'
+        websiteUrl: 'https://loyalty.campnetwork.xyz/loyalty'
     }
 };
 
