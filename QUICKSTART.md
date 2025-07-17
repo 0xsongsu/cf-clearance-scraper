@@ -28,6 +28,14 @@ curl -X POST http://localhost:3000/ \
     "websiteUrl": "https://turnstile.zeroclover.io/",
     "websiteKey": "0x4AAAAAAAEwzhD6pyKkgXC0"
   }'
+
+# 测试 Cloudflare 5秒盾绕过
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "cf5s",
+    "websiteUrl": "https://loyalty.campnetwork.xyz/home"
+  }'
 ```
 
 ## 访问监控

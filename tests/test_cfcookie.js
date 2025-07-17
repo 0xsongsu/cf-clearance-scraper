@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * CF Cookie 功能测试脚本
- * 测试获取 cf_clearance cookie 功能
+ * CF 5秒盾绕过功能测试脚本
+ * 测试绕过 Cloudflare 5秒盾并获取 cf_clearance cookie 功能
  */
 
 const http = require('http');
@@ -13,19 +13,19 @@ const TEST_CONFIG = {
         port: 3000,
         timeout: 360000 // 6分钟超时
     },
-    cfcookie: {
+    cf5s: {
         websiteUrl: 'https://loyalty.campnetwork.xyz/'
     }
 };
 
 /**
- * 发送 cf_clearance cookie 获取请求
+ * 发送 Cloudflare 5秒盾绕过请求
  */
 function getCfCookie(testData = {}) {
     return new Promise((resolve, reject) => {
         const requestData = {
-            type: "cfcookie",
-            websiteUrl: testData.websiteUrl || TEST_CONFIG.cfcookie.websiteUrl,
+            type: "cf5s",
+            websiteUrl: testData.websiteUrl || TEST_CONFIG.cf5s.websiteUrl,
             ...testData
         };
 
@@ -226,9 +226,9 @@ async function testCookieUsage(cfClearance, testUrl) {
  * 运行测试套件
  */
 async function runTests() {
-    console.log('🍪 CF Cookie 功能测试');
+    console.log('🛡️ CF 5秒盾绕过功能测试');
     console.log('='.repeat(60));
-    console.log(`🌐 测试网站: ${TEST_CONFIG.cfcookie.websiteUrl}`);
+    console.log(`🌐 测试网站: ${TEST_CONFIG.cf5s.websiteUrl}`);
     console.log(`🖥️  服务地址: http://${TEST_CONFIG.server.host}:${TEST_CONFIG.server.port}`);
     console.log('='.repeat(60));
     console.log();
@@ -248,7 +248,7 @@ async function runTests() {
     console.log();
 
     // 2. 基本功能测试
-    console.log('🎯 开始 cf_clearance cookie 获取测试...');
+    console.log('🎯 开始 Cloudflare 5秒盾绕过测试...');
     console.log('⏱️  预计耗时: 30-120 秒');
     console.log();
     
@@ -279,7 +279,7 @@ async function runTests() {
         // 4. 测试 cookie 使用
         if (response.body && response.body.code === 200 && response.body.cf_clearance) {
             console.log('🧪 测试 cookie 实际使用效果...');
-            const cookieTest = await testCookieUsage(response.body.cf_clearance, TEST_CONFIG.cfcookie.websiteUrl);
+            const cookieTest = await testCookieUsage(response.body.cf_clearance, TEST_CONFIG.cf5s.websiteUrl);
             
             console.log('─'.repeat(40));
             if (cookieTest.success) {

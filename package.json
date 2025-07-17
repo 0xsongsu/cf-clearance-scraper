@@ -11,6 +11,8 @@
     "start:manual": "node start.js --maxMemoryUsage=4096 --maxConcurrentRequests=60 --contextPoolSize=20",
     "test": "node --experimental-vm-modules ./node_modules/.bin/jest --detectOpenHandles --verbose",
     "test:quick": "node tests/quick_test.js",
+    "test:cf5s": "node tests/test_cf5s.js",
+    "test:cfcookie": "node tests/test_cfcookie.js",
     "check-chrome": "node scripts/check_chrome.js",
     "diagnose": "node scripts/check_chrome.js"
   },

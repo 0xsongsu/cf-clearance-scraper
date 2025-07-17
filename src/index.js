@@ -83,7 +83,7 @@ app.post('/', async (req, res) => {
         if (!type) {
             return res.status(400).json({
                 code: 400,
-                message: 'Missing required parameter: type. Supported types: cftoken, cfcookie',
+                message: 'Missing required parameter: type. Supported types: cftoken, cf5s',
                 token: null
             });
         }
@@ -91,14 +91,18 @@ app.post('/', async (req, res) => {
         switch (type.toLowerCase()) {
             case 'cftoken':
                 return await handleCftokenRequest(req, res);
-            
+
+            case 'cf5s':
+                return await handleCf5sRequest(req, res);
+
+            // 保持向后兼容性
             case 'cfcookie':
-                return await handleCfcookieRequest(req, res);
-            
+                return await handleCf5sRequest(req, res);
+
             default:
                 return res.status(400).json({
                     code: 400,
-                    message: `Unsupported type: ${type}. Supported types: cftoken, cfcookie`,
+                    message: `Unsupported type: ${type}. Supported types: cftoken, cf5s`,
                     token: null
                 });
         }
@@ -145,23 +149,23 @@ async function handleCftokenRequest(req, res) {
     return handleClearanceRequest(req, res, internalData);
 }
 
-// 处理 cfcookie 请求
-async function handleCfcookieRequest(req, res) {
+// 处理 cf5s 请求 (Cloudflare 5秒盾)
+async function handleCf5sRequest(req, res) {
     const data = req.body;
 
     // 参数验证
     if (!data.websiteUrl) {
-        return res.status(400).json({ 
-            code: 400, 
+        return res.status(400).json({
+            code: 400,
             message: 'websiteUrl is required',
-            token: null 
+            token: null
         });
     }
 
     // 转换为内部格式
     const internalData = {
         url: data.websiteUrl,
-        mode: 'cfcookie',
+        mode: 'cf5s',
         proxy: data.proxy,
         authToken: data.authToken
     };
@@ -244,7 +248,8 @@ async function handleClearanceRequest(req, res, data) {
                     return { code: 500, message: err.message }
                 })
                 break;
-            case "cfcookie":
+            case "cf5s":
+            case "cfcookie": // 保持向后兼容性
                 result = await getCfClearance(data).then(res => {
                     // 如果返回的是字符串（旧格式），转换为新格式
                     if (typeof res === 'string') {

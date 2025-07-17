@@ -8,7 +8,9 @@
 
 **支持的服务类型**:
 - `cftoken` - Cloudflare Turnstile 令牌生成
-- `cfcookie` - 获取 cf_clearance Cookie 和完整请求头
+- `cf5s` - 绕过 Cloudflare 5秒盾，获取 cf_clearance Cookie 和完整请求头
+
+> **📝 向后兼容性**: 旧的 `cfcookie` 类型仍然支持，会自动映射到 `cf5s` 功能
 
 **标准响应格式**: 
 ```json
@@ -57,9 +59,9 @@ if (result.code === 200) {
 }
 ```
 
-### 2. cf_clearance Cookie 获取
+### 2. Cloudflare 5秒盾绕过 (cf5s)
 
-绕过 Cloudflare 保护页面，获取完整的浏览器环境信息：
+绕过 Cloudflare 5秒盾保护页面，获取完整的浏览器环境信息：
 
 **请求示例**:
 ```javascript
@@ -69,7 +71,7 @@ const response = await fetch('http://localhost:3000/', {
         'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-        type: "cfcookie",
+        type: "cf5s",
         websiteUrl: "https://loyalty.campnetwork.xyz/home"
     })
 });
@@ -236,7 +238,7 @@ const response = await fetch('http://localhost:3000/', {
         'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-        type: "cfcookie",
+        type: "cf5s",
         websiteUrl: "https://example.com",
         proxy: {
             host: "proxy.example.com",
@@ -308,10 +310,10 @@ const response = await fetch('http://localhost:3000/', {
 
 ## 💡 最佳实践
 
-1. **合理设置超时时间**：cfcookie请求可能需要60-120秒
+1. **合理设置超时时间**：cf5s请求可能需要60-120秒
 2. **处理失败重试**：网络问题可能导致偶发失败
 3. **监控服务状态**：定期检查`/api/monitor`端点
-4. **使用完整cookie信息**：cfcookie返回的所有cookies都可能有用
+4. **使用完整cookie信息**：cf5s返回的所有cookies都可能有用
 5. **保持User-Agent一致**：使用返回的headers中的User-Agent
 
 ## 🔗 相关链接

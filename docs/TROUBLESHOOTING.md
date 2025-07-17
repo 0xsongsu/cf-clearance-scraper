@@ -190,9 +190,9 @@ curl -I https://example.com
   "websiteKey": "your-site-key"         // 必需
 }
 
-// cfcookie 请求
+// cf5s 请求 (Cloudflare 5秒盾)
 {
-  "type": "cfcookie",
+  "type": "cf5s",
   "websiteUrl": "https://example.com"   // 必需
 }
 ```
@@ -301,7 +301,7 @@ curl -v https://challenges.cloudflare.com
 }
 ```
 
-#### 2. cf_clearance 获取失败
+#### 2. Cloudflare 5秒盾绕过失败
 
 **错误信息**:
 ```json
