@@ -188,14 +188,11 @@ function formatDuration(ms) {
 /**
  * 测试使用获取的 cf_clearance cookie
  */
-async function testCookieUsage(cfClearance) {
+async function testCookieUsage(cfClearance, testUrl) {
     console.log('🍪 测试 cf_clearance cookie 使用...');
-    
-    return new Promise((resolve) => {
-        const options = {
-            hostname: 'loyalty.campnetwork.xyz',
-            port: 443,
-            path: '/',
+
+    try {
+        const response = await fetch(testUrl, {
             method: 'GET',
             headers: {
                 'Cookie': `cf_clearance=${cfClearance}`,
@@ -206,37 +203,23 @@ async function testCookieUsage(cfClearance) {
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1'
             }
+        });
+
+        const responseText = await response.text();
+        const isSuccess = response.status === 200 && !responseText.includes('Just a moment');
+
+        return {
+            success: isSuccess,
+            statusCode: response.status,
+            contentLength: responseText.length,
+            hasCloudflareChallenge: responseText.includes('Just a moment') || responseText.includes('cf-browser-verification')
         };
-
-        const https = require('https');
-        const req = https.request(options, (res) => {
-            let responseData = '';
-            
-            res.on('data', (chunk) => {
-                responseData += chunk;
-            });
-            
-            res.on('end', () => {
-                const isSuccess = res.statusCode === 200 && !responseData.includes('Just a moment');
-                resolve({
-                    success: isSuccess,
-                    statusCode: res.statusCode,
-                    contentLength: responseData.length,
-                    hasCloudflareChallenge: responseData.includes('Just a moment') || responseData.includes('cf-browser-verification')
-                });
-            });
-        });
-
-        req.on('error', (err) => {
-            resolve({
-                success: false,
-                error: err.message
-            });
-        });
-
-        req.setTimeout(10000);
-        req.end();
-    });
+    } catch (error) {
+        return {
+            success: false,
+            error: error.message
+        };
+    }
 }
 
 /**
@@ -296,7 +279,7 @@ async function runTests() {
         // 4. 测试 cookie 使用
         if (response.body && response.body.code === 200 && response.body.cf_clearance) {
             console.log('🧪 测试 cookie 实际使用效果...');
-            const cookieTest = await testCookieUsage(response.body.cf_clearance);
+            const cookieTest = await testCookieUsage(response.body.cf_clearance, TEST_CONFIG.cfcookie.websiteUrl);
             
             console.log('─'.repeat(40));
             if (cookieTest.success) {

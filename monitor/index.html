@@ -180,43 +180,19 @@
             const element = document.getElementById('serviceStatus');
             
             element.innerHTML = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <!-- 第一排 -->
-                    <div style="padding: 15px; background: rgba(28, 168, 221, 0.1); border-radius: 8px; text-align: center; border: 2px solid rgba(28, 168, 221, 0.2);">
-                        <div style="margin-bottom: 10px;">
-                            <img src="https://dash.cloudflare.com/favicon.ico" alt="Cloudflare" style="width: 32px; height: 32px;">
+                <div style="display: flex; justify-content: center;">
+                    <!-- 只保留 Cloudflare Turnstile -->
+                    <div style="padding: 20px; background: rgba(28, 168, 221, 0.1); border-radius: 12px; text-align: center; border: 2px solid rgba(28, 168, 221, 0.2); min-width: 200px;">
+                        <div style="margin-bottom: 15px;">
+                            <img src="https://dash.cloudflare.com/favicon.ico" alt="Cloudflare" style="width: 40px; height: 40px;">
                         </div>
-                        <div style="font-weight: bold; color: #1ca8dd; margin-bottom: 5px; font-size: 0.9rem;">Cloudflare</div>
-                        <div style="color: #27ae60; font-size: 0.8rem; font-weight: 600;">
-                            <span class="status-indicator status-running" style="margin-right: 4px;"></span>
+                        <div style="font-weight: bold; color: #1ca8dd; margin-bottom: 8px; font-size: 1.1rem;">Cloudflare</div>
+                        <div style="color: #27ae60; font-size: 0.9rem; font-weight: 600;">
+                            <span class="status-indicator status-running" style="margin-right: 6px;"></span>
                             运行中
                         </div>
-                        <div style="color: #7f8c8d; font-size: 0.75rem; margin-top: 3px;">Turnstile 解决</div>
+                        <div style="color: #7f8c8d; font-size: 0.8rem; margin-top: 5px;">Turnstile 解决</div>
                     </div>
-                    <div style="padding: 15px; background: rgba(255, 140, 0, 0.1); border-radius: 8px; text-align: center; border: 2px solid rgba(255, 140, 0, 0.2);">
-                        <div style="margin-bottom: 10px;">
-                            <img src="hcaptcha-logo.png" alt="hCaptcha" style="width: 32px; height: 32px;">
-                        </div>
-                        <div style="font-weight: bold; color: #ff8c00; margin-bottom: 5px; font-size: 0.9rem;">hCaptcha</div>
-                        <div style="color: #27ae60; font-size: 0.8rem; font-weight: 600;">
-                            <span class="status-indicator status-running" style="margin-right: 4px;"></span>
-                            运行中
-                        </div>
-                        <div style="color: #7f8c8d; font-size: 0.75rem; margin-top: 3px;">AI 智能解决</div>
-                    </div>
-                    <!-- 第二排 -->
-                    <div style="padding: 15px; background: rgba(52, 120, 191, 0.1); border-radius: 8px; text-align: center; border: 2px solid rgba(52, 120, 191, 0.2);">
-                        <div style="margin-bottom: 10px;">
-                            <img src="https://www.gstatic.com/images/icons/material/product/2x/recaptcha_48dp.png" alt="reCAPTCHA" style="width: 32px; height: 32px;">
-                        </div>
-                        <div style="font-weight: bold; color: #3478bf; margin-bottom: 5px; font-size: 0.9rem;">reCAPTCHA</div>
-                        <div style="color: #27ae60; font-size: 0.8rem; font-weight: 600;">
-                            <span class="status-indicator status-running" style="margin-right: 4px;"></span>
-                            运行中
-                        </div>
-                        <div style="color: #7f8c8d; font-size: 0.75rem; margin-top: 3px;">v2/v3 解决</div>
-                    </div>
-                    <div></div> <!-- 空占位元素保持网格布局 -->
                 </div>
             `;
         }
@@ -284,21 +260,11 @@
                 </div>
                 <div style="margin-top: 15px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 15px;">
                     <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #34495e;">服务实例分布</h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-                        <div style="padding: 8px; background: rgba(28, 168, 221, 0.1); border-radius: 4px; text-align: center; font-size: 0.75rem;">
-                            <div style="font-weight: bold; color: #1ca8dd; margin-bottom: 3px;">Cloudflare</div>
-                            <div style="color: #7f8c8d;">实例: ${data.activeRequestsByService?.cloudflare || 0}</div>
-                            <div style="color: #7f8c8d; font-size: 0.65rem;">Turnstile</div>
-                        </div>
-                        <div style="padding: 8px; background: rgba(255, 140, 0, 0.1); border-radius: 4px; text-align: center; font-size: 0.75rem;">
-                            <div style="font-weight: bold; color: #ff8c00; margin-bottom: 3px;">hCaptcha</div>
-                            <div style="color: #7f8c8d;">实例: ${data.activeRequestsByService?.hcaptcha || 0}</div>
-                            <div style="color: #7f8c8d; font-size: 0.65rem;">AI解决</div>
-                        </div>
-                        <div style="padding: 8px; background: rgba(52, 120, 191, 0.1); border-radius: 4px; text-align: center; font-size: 0.75rem;">
-                            <div style="font-weight: bold; color: #3478bf; margin-bottom: 3px;">reCAPTCHA</div>
-                            <div style="color: #7f8c8d;">实例: ${data.activeRequestsByService?.recaptcha || 0}</div>
-                            <div style="color: #7f8c8d; font-size: 0.65rem;">v2/v3</div>
+                    <div style="display: flex; justify-content: center;">
+                        <div style="padding: 12px; background: rgba(28, 168, 221, 0.1); border-radius: 8px; text-align: center; font-size: 0.85rem; min-width: 150px;">
+                            <div style="font-weight: bold; color: #1ca8dd; margin-bottom: 5px;">Cloudflare</div>
+                            <div style="color: #7f8c8d; margin-bottom: 2px;">活跃实例: ${data.instances.active}</div>
+                            <div style="color: #7f8c8d; font-size: 0.75rem;">Turnstile</div>
                         </div>
                     </div>
                 </div>
@@ -534,6 +500,27 @@
             return token.substring(0, maxLength) + '...';
         }
 
+        // 复制到剪贴板
+        function copyToClipboard(text, element) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = element.textContent;
+                element.textContent = '已复制!';
+                element.style.background = '#d4edda';
+                element.style.borderColor = '#c3e6cb';
+                element.style.color = '#155724';
+
+                setTimeout(() => {
+                    element.textContent = originalText;
+                    element.style.background = '#f8f9fa';
+                    element.style.borderColor = '#dee2e6';
+                    element.style.color = '';
+                }, 1000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动复制');
+            });
+        }
+
         // 更新统一请求表格
         function updateUnifiedRequestTable(data) {
             const element = document.getElementById('unifiedRequestTable');
@@ -556,11 +543,11 @@
             
             // 添加请求历史（已完成/失败状态）
             data.requestHistory.forEach(req => {
-                // 查找对应的token - 只根据requestId匹配，避免重复
-                const matchingToken = data.recentTokens.find(token => 
-                    token.requestId === req.requestId
+                // 查找对应的token - 使用req.id匹配token.requestId
+                const matchingToken = data.recentTokens.find(token =>
+                    token.requestId === req.id
                 );
-                
+
                 allRequests.push({
                     timestamp: req.timestamp,
                     url: req.url,
@@ -569,7 +556,7 @@
                     token: matchingToken ? matchingToken.token : '',
                     responseTime: req.responseTime,
                     isActive: false,
-                    requestId: req.requestId
+                    requestId: req.id
                 });
             });
             
@@ -587,9 +574,9 @@
                         <tr>
                             <th style="width: 120px;">时间</th>
                             <th style="width: 120px; max-width: 120px;">URL</th>
-                            <th style="width: 100px;">服务</th>
+                            <th style="width: 100px;">服务类型</th>
                             <th style="width: 100px;">状态</th>
-                            <th style="width: 120px;">Token</th>
+                            <th style="width: 200px;">Token/Cookie</th>
                             <th style="width: 90px;">响应时间</th>
                         </tr>
                     </thead>
@@ -613,20 +600,21 @@
                                     break;
                             }
                             
-                            const truncatedToken = truncateToken(req.token, 20);
-                            const responseTimeDisplay = req.status === 'processing' 
+                            const truncatedToken = truncateToken(req.token, 30);
+                            const responseTimeDisplay = req.status === 'processing'
                                 ? `${formatDuration(req.responseTime)} ⏱️`
                                 : formatDuration(req.responseTime);
-                            
-                            // 确定服务类型
+
+                            // 根据mode确定服务类型
                             let serviceType = '';
                             let serviceColor = '';
-                            if (req.mode === 'hcaptcha' || (req.url && req.url.includes('hcaptcha'))) {
-                                serviceType = 'hCaptcha';
-                                serviceColor = '#ff8c00';
-                            } else if (req.mode === 'recaptchav2' || req.mode === 'recaptchav3' || req.mode === 'recaptcha' || (req.url && req.url.includes('recaptcha'))) {
-                                serviceType = 'reCAPTCHA';
-                                serviceColor = '#3478bf';
+
+                            if (req.mode === 'turnstile-min' || req.mode === 'turnstile-max') {
+                                serviceType = 'CF Token';
+                                serviceColor = '#1ca8dd';
+                            } else if (req.mode === 'cfcookie') {
+                                serviceType = 'CF Cookie';
+                                serviceColor = '#e67e22';
                             } else {
                                 serviceType = 'Cloudflare';
                                 serviceColor = '#1ca8dd';
@@ -645,7 +633,7 @@
                                         <span class="status-badge ${statusClass}">${statusDisplay}</span>
                                     </td>
                                     <td style="font-family: monospace; font-size: 0.75rem;" title="${req.token}">
-                                        ${truncatedToken ? `<span style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px; border: 1px solid #dee2e6;">${truncatedToken}</span>` : '-'}
+                                        ${truncatedToken ? `<span style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px; border: 1px solid #dee2e6; cursor: pointer;" onclick="copyToClipboard('${req.token.replace(/'/g, "\\'")}', this)">${truncatedToken}</span>` : '-'}
                                     </td>
                                     <td style="font-weight: ${req.isActive ? 'bold' : 'normal'};">
                                         ${responseTimeDisplay}
@@ -746,7 +734,8 @@
         // 更新负载指标
         function updateLoadMetrics(data) {
             const currentActive = data.requests.active;
-            const totalCapacity = data.instances.total;
+            // 优先使用智能容量管理器的值，否则使用instances.total
+            const totalCapacity = data.performance?.capacity?.limits?.contextPoolSize || data.instances.total;
             
             // 更新峰值并发
             peakConcurrent = Math.max(peakConcurrent, currentActive);

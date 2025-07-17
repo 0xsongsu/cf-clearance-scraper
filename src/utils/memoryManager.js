@@ -2,17 +2,82 @@ const os = require('os');
 
 class MemoryManager {
     constructor() {
-        this.maxHeapUsage = Number(process.env.maxMemoryUsage) || 512; // MB
+        // 智能内存管理 - 根据系统内存自动调节
+        this.systemTotalMemoryMB = Math.round(os.totalmem() / 1024 / 1024);
+        this.initializeMemoryLimits();
+
         this.gcThreshold = 0.6; // 60% of max heap - 更积极的GC
         this.forceGcThreshold = 0.8; // 80% of max heap - 降低强制GC阈值
         this.monitoringInterval = 15000; // 15 seconds - 更频繁的监控
         this.monitoring = false;
-        
+
         // CPU监控相关 - 系统级监控
         this.cpuUsageHistory = [];
         this.maxCpuHistory = 20;
         this.lastSystemCpuTotal = null;
         this.lastSystemCpuIdle = null;
+
+        // 动态调节相关
+        this.lastMemoryCheck = Date.now();
+        this.memoryPressureHistory = [];
+        this.adaptiveThresholds = {
+            lowMemory: 0.5,    // 系统内存使用率低于50%时放宽限制
+            mediumMemory: 0.7, // 系统内存使用率50-70%时正常限制
+            highMemory: 0.85   // 系统内存使用率高于85%时严格限制
+        };
+    }
+
+    // 初始化内存限制 - 智能计算
+    initializeMemoryLimits() {
+        const manualLimit = Number(process.env.maxMemoryUsage) || Number(process.env.MAX_MEMORY_USAGE);
+
+        if (manualLimit && manualLimit > 0) {
+            // 用户手动设置了限制，使用用户设置
+            this.maxHeapUsage = manualLimit;
+            this.memoryManagementMode = 'manual';
+            console.log(`📊 内存管理模式: 手动设置 (${this.maxHeapUsage}MB)`);
+        } else {
+            // 智能计算内存限制
+            this.memoryManagementMode = 'auto';
+            this.calculateOptimalMemoryLimit();
+        }
+    }
+
+    // 计算最优内存限制
+    calculateOptimalMemoryLimit() {
+        const totalMemoryMB = this.systemTotalMemoryMB;
+        let optimalLimit;
+
+        if (totalMemoryMB <= 1024) {
+            // 1GB及以下：使用30%
+            optimalLimit = Math.floor(totalMemoryMB * 0.3);
+        } else if (totalMemoryMB <= 2048) {
+            // 1-2GB：使用35%
+            optimalLimit = Math.floor(totalMemoryMB * 0.35);
+        } else if (totalMemoryMB <= 4096) {
+            // 2-4GB：使用40%
+            optimalLimit = Math.floor(totalMemoryMB * 0.4);
+        } else if (totalMemoryMB <= 8192) {
+            // 4-8GB：使用45%
+            optimalLimit = Math.floor(totalMemoryMB * 0.45);
+        } else if (totalMemoryMB <= 16384) {
+            // 8-16GB：使用50%
+            optimalLimit = Math.floor(totalMemoryMB * 0.5);
+        } else if (totalMemoryMB <= 32768) {
+            // 16-32GB：使用50%，但不超过16GB
+            optimalLimit = Math.min(Math.floor(totalMemoryMB * 0.5), 16384);
+        } else {
+            // 32GB以上：使用40%，但不超过20GB
+            optimalLimit = Math.min(Math.floor(totalMemoryMB * 0.4), 20480);
+        }
+
+        // 确保最小限制为256MB
+        this.maxHeapUsage = Math.max(optimalLimit, 256);
+
+        console.log(`🧠 智能内存管理已启用:`);
+        console.log(`   系统总内存: ${totalMemoryMB}MB`);
+        console.log(`   计算的最优限制: ${this.maxHeapUsage}MB (${Math.round(this.maxHeapUsage / totalMemoryMB * 100)}%)`);
+        console.log(`   模式: 自动调节`);
     }
 
     startMonitoring() {
@@ -40,24 +105,55 @@ class MemoryManager {
         const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
         const rssMB = Math.round(memUsage.rss / 1024 / 1024);
         const systemFreeMB = Math.round(os.freemem() / 1024 / 1024);
-        const systemTotalMB = Math.round(os.totalmem() / 1024 / 1024);
+        const systemTotalMB = this.systemTotalMemoryMB;
 
-        // 使用配置的最大值来计算使用率，而不是动态的堆总量
+        // 计算系统内存使用率
+        const systemUsedMB = systemTotalMB - systemFreeMB;
+        const systemUsagePercent = systemUsedMB / systemTotalMB;
+
+        // 动态调节内存限制（仅在自动模式下）
+        if (this.memoryManagementMode === 'auto') {
+            this.adjustMemoryLimitsBasedOnSystemPressure(systemUsagePercent);
+        }
+
+        // 使用当前的最大值来计算使用率
         const maxHeapMB = this.maxHeapUsage;
         const heapUsagePercent = maxHeapMB > 0 ? heapUsedMB / maxHeapMB : 0;
 
-        // 记录内存使用情况
-        if (heapUsagePercent > 0.7) {
-            console.log(`⚠️  High memory usage: ${heapUsedMB}MB/${maxHeapMB}MB (${Math.round(heapUsagePercent * 100)}%)`);
-            console.log(`   RSS: ${rssMB}MB, HeapTotal: ${heapTotalMB}MB`);
-            console.log(`   System: ${systemTotalMB - systemFreeMB}MB/${systemTotalMB}MB used`);
+        // 记录内存压力历史
+        this.memoryPressureHistory.push({
+            timestamp: Date.now(),
+            heapUsagePercent,
+            systemUsagePercent,
+            heapUsedMB,
+            systemUsedMB
+        });
+
+        // 保持最近20次记录
+        if (this.memoryPressureHistory.length > 20) {
+            this.memoryPressureHistory.shift();
         }
 
-        // 执行垃圾回收
-        if (heapUsagePercent > this.forceGcThreshold) {
+        // 智能日志记录 - 根据内存压力调整日志级别
+        const shouldLog = this.shouldLogMemoryUsage(heapUsagePercent, systemUsagePercent);
+        if (shouldLog) {
+            const pressureLevel = this.getMemoryPressureLevel(systemUsagePercent);
+            console.log(`📊 内存监控 [${pressureLevel}]: 进程 ${heapUsedMB}MB/${maxHeapMB}MB (${Math.round(heapUsagePercent * 100)}%)`);
+            console.log(`   系统: ${systemUsedMB}MB/${systemTotalMB}MB (${Math.round(systemUsagePercent * 100)}%), RSS: ${rssMB}MB`);
+
+            if (this.memoryManagementMode === 'auto') {
+                console.log(`   自动调节: 当前限制 ${maxHeapMB}MB`);
+            }
+        }
+
+        // 执行垃圾回收 - 使用动态阈值
+        const dynamicGcThreshold = this.getDynamicGcThreshold(systemUsagePercent);
+        const dynamicForceGcThreshold = this.getDynamicForceGcThreshold(systemUsagePercent);
+
+        if (heapUsagePercent > dynamicForceGcThreshold) {
             this.forceGarbageCollection();
             this.cleanupBrowserContexts();
-        } else if (heapUsagePercent > this.gcThreshold) {
+        } else if (heapUsagePercent > dynamicGcThreshold) {
             this.softGarbageCollection();
         }
 
@@ -66,8 +162,99 @@ class MemoryManager {
             heapTotalMB,
             rssMB,
             systemFreeMB,
-            heapUsagePercent
+            systemUsedMB,
+            systemTotalMB,
+            heapUsagePercent,
+            systemUsagePercent,
+            maxHeapMB,
+            memoryManagementMode: this.memoryManagementMode,
+            pressureLevel: this.getMemoryPressureLevel(systemUsagePercent)
         };
+    }
+
+    // 根据系统内存压力动态调节内存限制
+    adjustMemoryLimitsBasedOnSystemPressure(systemUsagePercent) {
+        const now = Date.now();
+
+        // 每30秒检查一次是否需要调节
+        if (now - this.lastMemoryCheck < 30000) {
+            return;
+        }
+
+        this.lastMemoryCheck = now;
+        const originalLimit = this.maxHeapUsage;
+
+        if (systemUsagePercent < this.adaptiveThresholds.lowMemory) {
+            // 系统内存压力低，可以适当放宽限制
+            const newLimit = Math.min(
+                Math.floor(this.systemTotalMemoryMB * 0.6), // 最多使用60%系统内存
+                originalLimit * 1.2 // 最多增加20%
+            );
+            this.maxHeapUsage = Math.max(newLimit, originalLimit);
+
+        } else if (systemUsagePercent > this.adaptiveThresholds.highMemory) {
+            // 系统内存压力高，需要收紧限制
+            const newLimit = Math.max(
+                Math.floor(this.systemTotalMemoryMB * 0.2), // 最少使用20%系统内存
+                originalLimit * 0.8 // 最多减少20%
+            );
+            this.maxHeapUsage = Math.min(newLimit, originalLimit);
+        }
+
+        if (this.maxHeapUsage !== originalLimit) {
+            console.log(`🔄 动态调节内存限制: ${originalLimit}MB → ${this.maxHeapUsage}MB (系统使用率: ${Math.round(systemUsagePercent * 100)}%)`);
+        }
+    }
+
+    // 获取内存压力等级
+    getMemoryPressureLevel(systemUsagePercent) {
+        if (systemUsagePercent < this.adaptiveThresholds.lowMemory) {
+            return '低压力';
+        } else if (systemUsagePercent < this.adaptiveThresholds.mediumMemory) {
+            return '中等压力';
+        } else if (systemUsagePercent < this.adaptiveThresholds.highMemory) {
+            return '高压力';
+        } else {
+            return '极高压力';
+        }
+    }
+
+    // 智能决定是否记录日志
+    shouldLogMemoryUsage(heapUsagePercent, systemUsagePercent) {
+        // 高内存使用时总是记录
+        if (heapUsagePercent > 0.7 || systemUsagePercent > 0.8) {
+            return true;
+        }
+
+        // 每5分钟记录一次正常状态
+        const lastLog = this.memoryPressureHistory.slice(-1)[0];
+        if (!lastLog || Date.now() - lastLog.timestamp > 300000) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // 获取动态GC阈值
+    getDynamicGcThreshold(systemUsagePercent) {
+        if (systemUsagePercent > this.adaptiveThresholds.highMemory) {
+            return 0.5; // 系统内存紧张时更积极的GC
+        } else if (systemUsagePercent > this.adaptiveThresholds.mediumMemory) {
+            return 0.6; // 正常GC阈值
+        } else {
+            return 0.7; // 系统内存充足时放宽GC
+        }
+    }
+
+    // 获取动态强制GC阈值
+    getDynamicForceGcThreshold(systemUsagePercent) {
+        if (systemUsagePercent > this.adaptiveThresholds.highMemory) {
+            return 0.7; // 系统内存紧张时更积极的强制GC
+        } else if (systemUsagePercent > this.adaptiveThresholds.mediumMemory) {
+            return 0.8; // 正常强制GC阈值
+        } else {
+            return 0.85; // 系统内存充足时放宽强制GC
+        }
     }
 
     forceGarbageCollection() {

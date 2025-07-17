@@ -5,6 +5,14 @@
 async function getCfClearance({ url, proxy }) {
   return new Promise(async (resolve, reject) => {
     if (!url) return reject("Missing url parameter");
+
+    // 检查浏览器是否已初始化
+    if (!global.browser) {
+      if (global.browserInitFailed) {
+        return reject("浏览器初始化失败，请检查Chrome安装和配置");
+      }
+      return reject("浏览器正在初始化中，请稍后重试");
+    }
     
     let context = null;
     let page = null;
@@ -20,15 +28,12 @@ async function getCfClearance({ url, proxy }) {
       if (context && !contextClosed) {
         try {
           contextClosed = true;
-          // 使用上下文池释放上下文
-          if (global.contextPool && typeof global.contextPool.releaseContext === 'function') {
-            await global.contextPool.releaseContext(context);
-          } else {
-            // 回退到直接关闭
-            await context.close();
-          }
+          // cfcookie请求需要强制关闭上下文，不能复用
+          // 因为cookie状态会影响后续请求
+          console.log('🧹 强制关闭cfcookie上下文以避免cookie缓存');
+          await context.close();
         } catch (e) {
-          console.error("Error releasing context:", e.message);
+          console.error("Error closing cfcookie context:", e.message);
         }
       }
     };
@@ -42,17 +47,13 @@ async function getCfClearance({ url, proxy }) {
     }, global.timeOut || 120000);
 
     try {
-      // 使用上下文池获取上下文
-      if (global.contextPool && typeof global.contextPool.getContext === 'function') {
-        context = await global.contextPool.getContext();
-      } else {
-        // 回退到直接创建
-        context = await global.browser
-          .createBrowserContext({
-            proxyServer: proxy ? `http://${proxy.host}:${proxy.port}` : undefined,
-          })
-          .catch(() => null);
-      }
+      // cfcookie请求总是创建全新的上下文，避免cookie缓存问题
+      console.log('🆕 为cfcookie请求创建全新上下文');
+      context = await global.browser
+        .createBrowserContext({
+          proxyServer: proxy ? `http://${proxy.host}:${proxy.port}` : undefined,
+        })
+        .catch(() => null);
         
       if (!context) {
         clearTimeout(timeoutHandler);
@@ -94,10 +95,47 @@ async function getCfClearance({ url, proxy }) {
           
           if (cfClearanceCookie && cfClearanceCookie.value) {
             console.log('✅ 成功获取 cf_clearance cookie');
+
+            // 获取完整的请求头信息
+            const headers = {
+              'User-Agent': await page.evaluate(() => navigator.userAgent),
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'DNT': '1',
+              'Connection': 'keep-alive',
+              'Upgrade-Insecure-Requests': '1',
+              'Sec-Fetch-Dest': 'document',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-User': '?1',
+              'Cache-Control': 'max-age=0'
+            };
+
+            // 获取所有cookies，不仅仅是cf_clearance
+            const allCookies = cookies.map(cookie => ({
+              name: cookie.name,
+              value: cookie.value,
+              domain: cookie.domain,
+              path: cookie.path,
+              expires: cookie.expires,
+              httpOnly: cookie.httpOnly,
+              secure: cookie.secure,
+              sameSite: cookie.sameSite
+            }));
+
+            const result = {
+              cf_clearance: cfClearanceCookie.value,
+              headers: headers,
+              cookies: allCookies,
+              url: url,
+              timestamp: new Date().toISOString()
+            };
+
             isResolved = true;
             clearTimeout(timeoutHandler);
             await cleanup();
-            resolve(cfClearanceCookie.value);
+            resolve(result);
             return;
           }
           

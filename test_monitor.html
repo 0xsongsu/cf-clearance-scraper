@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>监控测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            border: 1px solid #e9ecef;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .loading {
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CF Clearance Scraper 监控测试 (仅Cloudflare Turnstile)</h1>
+        
+        <div class="status info">
+            <strong>测试说明:</strong> 这个页面用于测试监控API是否正常工作
+        </div>
+
+        <button onclick="testMonitorAPI()">测试监控API</button>
+        <button onclick="testCfToken()">测试CF Token生成</button>
+        <button onclick="openMonitorPage()">打开监控页面</button>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function testMonitorAPI() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="status info">正在测试监控API...</div>';
+
+            try {
+                const response = await fetch('/api/monitor');
+                const data = await response.json();
+                
+                // 检查必需的字段
+                const requiredFields = ['status', 'requests', 'instances', 'memory', 'activeRequests', 'requestHistory', 'recentTokens'];
+                const missingFields = requiredFields.filter(field => !(field in data));
+
+                // 检查数组字段的类型
+                const arrayFields = ['activeRequests', 'requestHistory', 'recentTokens'];
+                const typeErrors = arrayFields.filter(field =>
+                    data[field] && !Array.isArray(data[field])
+                ).map(field => `${field} is not an array`);
+                
+                if (missingFields.length > 0 || typeErrors.length > 0) {
+                    const errors = [...missingFields.map(f => `缺少字段: ${f}`), ...typeErrors];
+                    resultsDiv.innerHTML = `
+                        <div class="status error">
+                            <strong>监控API测试失败:</strong><br>
+                            ${errors.join('<br>')}
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="status success">
+                            <strong>监控API测试成功!</strong> 所有必需字段都存在
+                        </div>
+                        <div class="status info">
+                            <strong>服务状态:</strong> ${data.status}<br>
+                            <strong>总请求数:</strong> ${data.requests.total}<br>
+                            <strong>活跃请求:</strong> ${data.requests.active}<br>
+                            <strong>成功率:</strong> ${data.requests.successRate}<br>
+                            <strong>浏览器实例:</strong> ${data.instances.active}/${data.instances.total}<br>
+                            <strong>内存使用:</strong> ${data.memory.used} / ${data.memory.max} (${data.memory.percent})<br>
+                            <strong>活跃请求:</strong> ${data.activeRequests.length}<br>
+                            <strong>请求历史:</strong> ${data.requestHistory.length}<br>
+                            <strong>最近Token:</strong> ${data.recentTokens.length}
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>监控API测试失败:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function testCfToken() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="status info">正在测试CF Token生成...</div>';
+
+            try {
+                const response = await fetch('/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'cftoken',
+                        websiteUrl: 'https://irys.xyz/faucet',
+                        websiteKey: '0x4AAAAAAA6vnrvBCtS4FAl-'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.code === 200 && data.token) {
+                    resultsDiv.innerHTML = `
+                        <div class="status success">
+                            <strong>CF Token生成成功!</strong>
+                        </div>
+                        <div class="status info">
+                            <strong>Token长度:</strong> ${data.token.length} 字符<br>
+                            <strong>Token预览:</strong> ${data.token.substring(0, 100)}...
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="status error">
+                            <strong>CF Token生成失败:</strong> ${data.message || '未知错误'}
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>CF Token测试失败:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function openMonitorPage() {
+            window.open('/monitor', '_blank');
+        }
+
+        // 页面加载时自动测试监控API
+        window.onload = function() {
+            testMonitorAPI();
+        };
+    </script>
+</body>
+</html>

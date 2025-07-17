@@ -9,6 +9,7 @@ const authToken = process.env.AUTH_TOKEN || process.env.authToken || null // 兼
 const cors = require('cors')
 const reqValidate = require('../captcha-solvers/turnstile/module/reqValidate')
 const memoryManager = require('./utils/memoryManager')
+const capacityManager = require('./utils/capacityManager')
 
 // 请求计数器（替代浏览器实例计数）
 global.activeRequestCount = 0
@@ -27,10 +28,7 @@ global.monitoringData = {
     recentTokens: [], // 最近生成的token
     requestHistory: [], // 请求历史
     activeRequestsByService: { // 按服务类型分组的活跃请求
-        cloudflare: 0,
-        hcaptcha: 0,
-        recaptchav2: 0,
-        recaptchav3: 0
+        cloudflare: 0
     },
     lastRequestTime: new Date() // 最后一次请求时间
 }
@@ -49,26 +47,26 @@ app.use(cors())
 
 // 静态文件服务（用于监控页面）
 app.use('/monitor', require('express').static(__dirname + '/../monitor'))
-if (process.env.NODE_ENV !== 'development') {
-    let server = app.listen(port, '0.0.0.0', () => { 
-        console.log(`Server running on port ${port}`)
-        console.log(`Local access: http://localhost:${port}`)
-        console.log(`Network access: http://0.0.0.0:${port}`)
-    })
-    try {
-        server.timeout = global.timeOut
-    } catch (e) { }
-}
+
+// 测试页面
+app.get('/test', (req, res) => {
+    res.sendFile(require('path').join(__dirname, '../test_monitor.html'));
+})
+// 统一启动服务器，不区分环境
+let server = app.listen(port, '0.0.0.0', () => {
+    console.log(`Server running on port ${port}`)
+    console.log(`Local access: http://localhost:${port}`)
+    console.log(`Network access: http://0.0.0.0:${port}`)
+})
+try {
+    server.timeout = global.timeOut
+} catch (e) { }
 if (process.env.SKIP_LAUNCH != 'true') require('../captcha-solvers/turnstile/module/createBrowser')
 
-// 启动内存监控（仅在非测试环境）
+// 启动内存监控和容量管理（仅在非测试环境）
 if (process.env.NODE_ENV !== 'test') {
     memoryManager.startMonitoring()
-}
-
-// 启动自动重启检查（仅在非测试环境）
-if (process.env.NODE_ENV !== 'test' && global.autoRestartConfig.enabled) {
-    startAutoRestartCheck()
+    capacityManager.startMonitoring()
 }
 
 const getSource = require('../captcha-solvers/turnstile/endpoints/getSource')
@@ -76,10 +74,6 @@ const solveTurnstileMin = require('../captcha-solvers/turnstile/endpoints/solveT
 const solveTurnstileMax = require('../captcha-solvers/turnstile/endpoints/solveTurnstile.max')
 const wafSession = require('../captcha-solvers/turnstile/endpoints/wafSession')
 const getCfClearance = require('../captcha-solvers/turnstile/endpoints/cfcookieService')
-const { solveHcaptcha } = require('./endpoints/captcha')
-const PythonRecaptchaSolver = require('../captcha-solvers/recaptcha/python-recaptcha-solver')
-const RecaptchaV3Solver = require('../captcha-solvers/recaptcha/recaptchav3/index')
-
 
 // 统一验证码处理接口 - 根路径
 app.post('/', async (req, res) => {
@@ -89,7 +83,7 @@ app.post('/', async (req, res) => {
         if (!type) {
             return res.status(400).json({
                 code: 400,
-                message: 'Missing required parameter: type. Supported types: cftoken, hcaptcha, cfcookie, recaptchav2, recaptchav3',
+                message: 'Missing required parameter: type. Supported types: cftoken, cfcookie',
                 token: null
             });
         }
@@ -98,22 +92,13 @@ app.post('/', async (req, res) => {
             case 'cftoken':
                 return await handleCftokenRequest(req, res);
             
-            case 'hcaptcha':
-                return await solveHcaptcha(req, res);
-            
             case 'cfcookie':
                 return await handleCfcookieRequest(req, res);
-            
-            case 'recaptchav2':
-                return await handleRecaptchaV2Request(req, res);
-            
-            case 'recaptchav3':
-                return await handleRecaptchaV3Request(req, res);
             
             default:
                 return res.status(400).json({
                     code: 400,
-                    message: `Unsupported type: ${type}. Supported types: cftoken, hcaptcha, cfcookie, recaptchav2, recaptchav3`,
+                    message: `Unsupported type: ${type}. Supported types: cftoken, cfcookie`,
                     token: null
                 });
         }
@@ -126,90 +111,6 @@ app.post('/', async (req, res) => {
         });
     }
 })
-
-// 处理 reCAPTCHA v2 求解 (使用 Python 实现)
-async function handleRecaptchaV2Solve(data) {
-    try {
-        console.log('🐍 使用 Python reCAPTCHA v2 解决器...');
-        console.log('💡 Python 脚本将独立处理浏览器操作，不会创建重复页面');
-        
-        // 创建 Python reCAPTCHA v2 解决器
-        const solver = new PythonRecaptchaSolver();
-        
-        // 环境验证
-        const envCheck = await solver.validateEnvironment();
-        if (!envCheck.valid) {
-            console.warn('⚠️  Python 环境检查警告:', envCheck.issues);
-            // 尝试自动安装依赖
-            try {
-                await solver.installDependencies();
-            } catch (installError) {
-                console.error('❌ 自动安装 Python 依赖失败:', installError.message);
-            }
-        }
-        
-        // Python 脚本完全独立处理：创建浏览器、导航、解决验证码、获取token
-        const result = await solver.solveDirectly({
-            url: data.url,
-            language: data.language || 'en',
-            proxy: data.proxy,
-            headless: false, // 显示 Python 的浏览器，便于调试
-            timeout: 180000
-        });
-        
-        console.log('✅ Python reCAPTCHA v2 解决成功');
-        return { token: result.token, code: 200, challengeType: result.challengeType, solveTime: result.solveTime };
-        
-    } catch (error) {
-        console.error('❌ Python reCAPTCHA v2 解决失败:', error.message);
-        throw error;
-    }
-}
-
-
-// 处理 reCAPTCHA v3 求解
-async function handleRecaptchaV3Solve(data) {
-    let context = null;
-    try {
-        console.log('🚀 获取 reCAPTCHA v3 浏览器上下文...');
-        context = await global.contextPool.getContext();
-        const page = await context.newPage();
-        
-        // 设置代理（如果提供）
-        if (data.proxy) {
-            console.log(`🌐 使用代理: ${data.proxy}`);
-        }
-        
-        // 创建 reCAPTCHA v3 解决器并在导航前初始化
-        const solver = new RecaptchaV3Solver();
-        
-        // 导航到目标页面
-        console.log(`🔗 导航到: ${data.url}`);
-        await page.goto(data.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        
-        // 解决 reCAPTCHA v3
-        const result = await solver.solve(page, {
-            action: data.action || 'submit',
-            sitekey: data.siteKey,
-            timeout: 30000
-        });
-        
-        console.log('✅ reCAPTCHA v3 解决成功');
-        return { token: result.token, code: 200, score: result.score, solveTime: result.solveTime };
-        
-    } catch (error) {
-        console.error('❌ reCAPTCHA v3 解决失败:', error.message);
-        throw error;
-    } finally {
-        if (context) {
-            try {
-                await global.contextPool.releaseContext(context);
-            } catch (e) {
-                console.warn('释放浏览器上下文时出现警告:', e.message);
-            }
-        }
-    }
-}
 
 // 处理 cftoken 请求
 async function handleCftokenRequest(req, res) {
@@ -253,7 +154,7 @@ async function handleCfcookieRequest(req, res) {
         return res.status(400).json({ 
             code: 400, 
             message: 'websiteUrl is required',
-            cf_clearance: null 
+            token: null 
         });
     }
 
@@ -261,41 +162,6 @@ async function handleCfcookieRequest(req, res) {
     const internalData = {
         url: data.websiteUrl,
         mode: 'cfcookie',
-        authToken: data.authToken
-    };
-
-    // 处理请求
-    return handleClearanceRequest(req, res, internalData);
-}
-
-// 处理 reCAPTCHA v2 请求
-async function handleRecaptchaV2Request(req, res) {
-    const data = req.body;
-
-    // 参数验证
-    if (!data.websiteUrl) {
-        return res.status(400).json({ 
-            code: 400, 
-            message: 'websiteUrl is required',
-            token: null 
-        });
-    }
-
-    if (!data.websiteKey) {
-        return res.status(400).json({ 
-            code: 400, 
-            message: 'websiteKey is required',
-            token: null 
-        });
-    }
-
-    // 转换为内部格式
-    const internalData = {
-        url: data.websiteUrl,
-        siteKey: data.websiteKey,
-        mode: 'recaptchav2',
-        language: data.language || 'en',
-        method: data.method || 'audio',
         proxy: data.proxy,
         authToken: data.authToken
     };
@@ -304,71 +170,22 @@ async function handleRecaptchaV2Request(req, res) {
     return handleClearanceRequest(req, res, internalData);
 }
 
-
-// 处理 reCAPTCHA v3 请求
-async function handleRecaptchaV3Request(req, res) {
-    const data = req.body;
-
-    // 参数验证
-    if (!data.websiteUrl) {
-        return res.status(400).json({ 
-            code: 400, 
-            message: 'websiteUrl is required',
-            token: null 
-        });
-    }
-
-    if (!data.websiteKey) {
-        return res.status(400).json({ 
-            code: 400, 
-            message: 'websiteKey is required',
-            token: null 
-        });
-    }
-
-    if (!data.pageAction) {
-        return res.status(400).json({ 
-            code: 400, 
-            message: 'pageAction is required',
-            token: null 
-        });
-    }
-
-    // 转换为内部格式
-    const internalData = {
-        url: data.websiteUrl,
-        siteKey: data.websiteKey,
-        mode: 'recaptchav3',
-        action: data.pageAction,
-        proxy: data.proxy,
-        authToken: data.authToken
-    };
-
-    // 处理请求
-    return handleClearanceRequest(req, res, internalData);
-}
-
-// 保留原始API格式支持 (向后兼容)
-app.post('/cf-clearance-scraper', async (req, res) => {
-    const data = req.body
-    return handleClearanceRequest(req, res, data)
-})
-
-// 统一的请求处理函数
+// 通用请求处理函数
 async function handleClearanceRequest(req, res, data) {
-    const check = reqValidate(data)
+    // 验证 authToken
+    if (authToken && data.authToken !== authToken) {
+        return res.status(401).json({ code: 401, message: 'Unauthorized: Invalid auth token' })
+    }
 
-    if (check !== true) return res.status(400).json({ code: 400, message: 'Bad Request', schema: check })
+    // 检查并发请求数
+    if (global.activeRequestCount >= global.maxConcurrentRequests) {
+        return res.status(429).json({ code: 429, message: 'Too many concurrent requests' })
+    }
 
-    if (authToken && data.authToken !== authToken) return res.status(401).json({ code: 401, message: 'Unauthorized' })
-
-    if (global.activeRequestCount >= global.maxConcurrentRequests) return res.status(429).json({ code: 429, message: 'Too Many Requests' })
-
-    if (process.env.SKIP_LAUNCH != 'true' && !global.browser) return res.status(500).json({ code: 500, message: 'The scanner is not ready yet. Please try again a little later.' })
-
-    var result = { code: 500 }
-
+    // 增加活跃请求计数
     global.activeRequestCount++
+    
+    // 更新监控数据
     global.monitoringData.totalRequests++
     
     // 更新最后请求时间
@@ -387,57 +204,65 @@ async function handleClearanceRequest(req, res, data) {
     })
     
     // 更新按服务分组的活跃请求计数
-    if (data.mode === 'hcaptcha') {
-        global.monitoringData.activeRequestsByService.hcaptcha++;
-    } else if (data.mode === 'recaptchav2') {
-        global.monitoringData.activeRequestsByService.recaptchav2++;
-    } else if (data.mode === 'recaptchav3') {
-        global.monitoringData.activeRequestsByService.recaptchav3++;
-    } else {
-        global.monitoringData.activeRequestsByService.cloudflare++;
-    }
+    global.monitoringData.activeRequestsByService.cloudflare++;
     
     // 设置请求超时清理
     const requestTimeout = setTimeout(() => {
         global.activeRequestCount--
         const request = global.monitoringData.activeRequests.get(requestId)
         if (request) {
-            if (request.mode === 'hcaptcha') {
-                global.monitoringData.activeRequestsByService.hcaptcha--;
-            } else if (request.mode === 'recaptchav2') {
-                global.monitoringData.activeRequestsByService.recaptchav2--;
-            } else if (request.mode === 'recaptchav3') {
-                global.monitoringData.activeRequestsByService.recaptchav3--;
-            } else {
-                global.monitoringData.activeRequestsByService.cloudflare--;
-            }
+            global.monitoringData.activeRequestsByService.cloudflare--;
         }
         global.monitoringData.activeRequests.delete(requestId)
         console.log('Request timeout, cleaning up')
     }, global.timeOut + 5000)
 
-    switch (data.mode) {
-        case "source":
-            result = await getSource(data).then(res => { return { source: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "turnstile-min":
-            result = await solveTurnstileMin(data).then(res => { return { token: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "turnstile-max":
-            result = await solveTurnstileMax(data).then(res => { return { token: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "waf-session":
-            result = await wafSession(data).then(res => { return { ...res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "cfcookie":
-            result = await getCfClearance(data).then(res => { return { cf_clearance: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "recaptchav2":
-            result = await handleRecaptchaV2Solve(data).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "recaptchav3":
-            result = await handleRecaptchaV3Solve(data).catch(err => { return { code: 500, message: err.message } })
-            break;
+    let result;
+    try {
+        switch (data.mode) {
+            case "source":
+                result = await getSource(data).then(res => { return { source: res, code: 200 } }).catch(err => {
+                    console.error('getSource error:', err.message);
+                    return { code: 500, message: err.message }
+                })
+                break;
+            case "turnstile-min":
+                result = await solveTurnstileMin(data).then(res => { return { token: res, code: 200 } }).catch(err => {
+                    console.error('solveTurnstileMin error:', err.message);
+                    return { code: 500, message: err.message }
+                })
+                break;
+            case "turnstile-max":
+                result = await solveTurnstileMax(data).then(res => { return { token: res, code: 200 } }).catch(err => {
+                    console.error('solveTurnstileMax error:', err.message);
+                    return { code: 500, message: err.message }
+                })
+                break;
+            case "waf-session":
+                result = await wafSession(data).then(res => { return { ...res, code: 200 } }).catch(err => {
+                    console.error('wafSession error:', err.message);
+                    return { code: 500, message: err.message }
+                })
+                break;
+            case "cfcookie":
+                result = await getCfClearance(data).then(res => {
+                    // 如果返回的是字符串（旧格式），转换为新格式
+                    if (typeof res === 'string') {
+                        return { cf_clearance: res, code: 200 };
+                    }
+                    // 如果返回的是对象（新格式），直接使用
+                    return { ...res, code: 200 };
+                }).catch(err => {
+                    console.error('getCfClearance error:', err.message);
+                    return { code: 500, message: err.message }
+                })
+                break;
+            default:
+                result = { code: 400, message: 'Invalid mode' }
+        }
+    } catch (error) {
+        console.error('Switch statement error:', error);
+        result = { code: 500, message: `Unexpected error: ${error.message}` };
     }
 
     global.activeRequestCount--
@@ -448,31 +273,55 @@ async function handleClearanceRequest(req, res, data) {
     const requestStartTime = request?.startTime
     
     if (request) {
-        if (request.mode === 'hcaptcha') {
-            global.monitoringData.activeRequestsByService.hcaptcha--;
-        } else if (request.mode === 'recaptchav2') {
-            global.monitoringData.activeRequestsByService.recaptchav2--;
-        } else if (request.mode === 'recaptchav3') {
-            global.monitoringData.activeRequestsByService.recaptchav3--;
-        } else {
-            global.monitoringData.activeRequestsByService.cloudflare--;
-        }
+        global.monitoringData.activeRequestsByService.cloudflare--;
     }
+    
     global.monitoringData.activeRequests.delete(requestId)
     
+    // 记录请求历史
+    const requestDuration = requestStartTime ? (new Date() - requestStartTime) : 0
+    const historyEntry = {
+        id: requestId,
+        url: data.url,
+        mode: data.mode,
+        startTime: requestStartTime,
+        endTime: new Date(),
+        duration: requestDuration,
+        success: result.code === 200,
+        clientIP: req.ip || req.socket.remoteAddress,
+        // 为监控页面兼容性添加的字段
+        timestamp: requestStartTime,
+        responseTime: requestDuration
+    }
+    
+    global.monitoringData.requestHistory.unshift(historyEntry)
+    
+    // 只保留最近100个请求历史
+    if (global.monitoringData.requestHistory.length > 100) {
+        global.monitoringData.requestHistory = global.monitoringData.requestHistory.slice(0, 100)
+    }
+    
+    // 更新成功/失败计数
     if (result.code === 200) {
         global.monitoringData.successfulRequests++
         
-        // 记录token（如果有）
+        // 记录token或cf_clearance（如果有）
+        let tokenValue = null;
         if (result.token) {
+            tokenValue = result.token;
+        } else if (result.cf_clearance) {
+            tokenValue = result.cf_clearance;
+        }
+
+        if (tokenValue) {
             global.monitoringData.recentTokens.unshift({
-                token: result.token,
+                token: tokenValue,
                 url: data.url,
                 mode: data.mode,
                 timestamp: new Date(),
                 requestId: requestId
             })
-            
+
             // 只保留最近50个token
             if (global.monitoringData.recentTokens.length > 50) {
                 global.monitoringData.recentTokens = global.monitoringData.recentTokens.slice(0, 50)
@@ -482,86 +331,92 @@ async function handleClearanceRequest(req, res, data) {
         global.monitoringData.failedRequests++
     }
     
-    // 记录请求历史 - 使用之前获取的开始时间
-    global.monitoringData.requestHistory.unshift({
-        requestId: requestId,
-        url: data.url,
-        mode: data.mode,
-        success: result.code === 200,
-        timestamp: new Date(),
-        responseTime: requestStartTime ? Date.now() - requestStartTime.getTime() : 0
-    })
-    
-    // 只保留最近100条历史
-    if (global.monitoringData.requestHistory.length > 100) {
-        global.monitoringData.requestHistory = global.monitoringData.requestHistory.slice(0, 100)
-    }
-    
-    // 检查内存使用情况
-    const memStats = memoryManager.checkMemoryUsage()
-    if (memStats.heapUsagePercent > 0.8) {
-        console.log('⚠️  High memory usage after request completion')
-    }
-
-    res.status(result.code ?? 500).send(result)
+    res.json(result)
 }
 
-// 监控API端点  
+// 监控API
 app.get('/api/monitor', (_, res) => {
     try {
-        const memStats = memoryManager.getMemoryStats()
-        const uptime = Date.now() - global.monitoringData.startTime.getTime()
+        // 计算活跃请求数
+        const activeRequestCount = global.monitoringData.activeRequests.size
         
+        // 计算成功率
+        const totalCompleted = global.monitoringData.successfulRequests + global.monitoringData.failedRequests
+        const successRate = totalCompleted > 0 ? (global.monitoringData.successfulRequests / totalCompleted * 100).toFixed(2) : 0
+        
+        // 获取运行时间
+        const uptime = new Date() - global.monitoringData.startTime
+        const uptimeHours = Math.floor(uptime / (1000 * 60 * 60))
+        const uptimeMinutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60))
+        
+        // 获取增强的内存使用情况
+        const memoryStats = memoryManager.getMemoryStats()
+        const memoryUsage = process.memoryUsage()
+        const memoryUsageMB = (memoryUsage.rss / 1024 / 1024).toFixed(2)
+        const memoryUsagePercent = (memoryUsageMB / global.maxMemoryUsage * 100).toFixed(2)
+        
+        // 获取浏览器实例信息
+        const browserContextsCount = global.browserContexts ? global.browserContexts.size : 0;
+        const contextPoolSize = global.contextPool ? global.contextPool.available.length : 0;
+        // 优先使用智能容量管理器的值
+        const maxContexts = capacityManager.contextPoolSize || (global.contextPool ? global.contextPool.maxSize : 20);
+        const contextPoolStatus = global.contextPool ? global.contextPool.getPoolStatus() : null;
+
+        // 构建监控数据
         const monitorData = {
-            // 基本状态
             status: 'running',
-            uptime: uptime,
             startTime: global.monitoringData.startTime,
-            
-            // 实例信息（基于请求计数）
-            instances: {
-                total: global.maxConcurrentRequests,
-                active: global.activeRequestCount,
-                available: global.maxConcurrentRequests - global.activeRequestCount
+            uptime: {
+                hours: uptimeHours,
+                minutes: uptimeMinutes,
+                formatted: `${uptimeHours}h ${uptimeMinutes}m`
             },
-            
-            // 请求统计
             requests: {
                 total: global.monitoringData.totalRequests,
+                active: activeRequestCount,
                 successful: global.monitoringData.successfulRequests,
                 failed: global.monitoringData.failedRequests,
-                active: global.monitoringData.activeRequests.size,
-                successRate: global.monitoringData.totalRequests > 0 ? 
-                    (global.monitoringData.successfulRequests / global.monitoringData.totalRequests * 100).toFixed(2) : 0
+                successRate: `${successRate}%`
             },
-            
-            // 活跃请求详情
-            activeRequests: Array.from(global.monitoringData.activeRequests.values()).map(req => ({
-                id: req.id,
-                url: req.url,
-                mode: req.mode,
-                startTime: req.startTime,
-                duration: Date.now() - req.startTime.getTime(),
-                clientIP: req.clientIP
-            })),
-            
-            // 最近的token
-            recentTokens: global.monitoringData.recentTokens.slice(0, 30),
-            
-            // 请求历史
-            requestHistory: global.monitoringData.requestHistory.slice(0, 20),
-            
-            // 内存信息
-            memory: memStats,
-            
-            // 浏览器上下文信息
-            browserContexts: global.browserContexts ? global.browserContexts.size : 0,
-            
-            // 按服务分组的活跃请求
             activeRequestsByService: global.monitoringData.activeRequestsByService,
-            
-            // 时间戳
-            timestamp: new Date()
+            instances: {
+                total: maxContexts,
+                active: browserContextsCount,
+                available: contextPoolSize,
+                used: browserContextsCount
+            },
+            memory: {
+                used: `${memoryUsageMB} MB`,
+                max: `${global.maxMemoryUsage} MB`,
+                percent: `${memoryUsagePercent}%`,
+                system: memoryStats ? {
+                    used: memoryStats.system.used,
+                    total: memoryStats.system.total,
+                    free: memoryStats.system.free,
+                    available: memoryStats.system.available
+                } : {
+                    used: parseFloat(memoryUsageMB),
+                    total: global.maxMemoryUsage,
+                    free: global.maxMemoryUsage - parseFloat(memoryUsageMB)
+                },
+                process: memoryStats ? memoryStats.process : null,
+                cpu: memoryStats ? memoryStats.cpu : { current: 0 },
+                management: {
+                    mode: memoryManager.memoryManagementMode || 'manual',
+                    pressureLevel: memoryStats ? (memoryStats.pressureLevel || '未知') : '未知',
+                    maxHeapUsage: memoryManager.maxHeapUsage
+                }
+            },
+            performance: {
+                contextPool: contextPoolStatus,
+                memoryPressureHistory: memoryManager.memoryPressureHistory ?
+                    memoryManager.memoryPressureHistory.slice(-10) : [],
+                capacity: capacityManager.getCapacityStatus()
+            },
+            activeRequests: Array.from(global.monitoringData.activeRequests.values()),
+            recentTokens: global.monitoringData.recentTokens,
+            requestHistory: global.monitoringData.requestHistory,
+            lastRequestTime: global.monitoringData.lastRequestTime
         }
         
         res.json(monitorData)
@@ -582,10 +437,7 @@ app.post('/api/monitor/reset', (_, res) => {
         recentTokens: [],
         requestHistory: [],
         activeRequestsByService: {
-            cloudflare: 0,
-            hcaptcha: 0,
-            recaptchav2: 0,
-            recaptchav3: 0
+            cloudflare: 0
         },
         lastRequestTime: new Date()
     }
@@ -610,10 +462,7 @@ app.post('/api/service/restart', async (_, res) => {
             recentTokens: [],
             requestHistory: [],
             activeRequestsByService: {
-                cloudflare: 0,
-                hcaptcha: 0,
-                recaptchav2: 0,
-                recaptchav3: 0
+                cloudflare: 0
             },
             lastRequestTime: new Date()
         }
@@ -656,45 +505,57 @@ app.post('/api/service/restart', async (_, res) => {
     } catch (error) {
         console.error('❌ 服务重启失败:', error.message)
         res.status(500).json({ 
-            message: 'Service restart failed: ' + error.message 
+            error: 'Service restart failed',
+            message: error.message
         })
     }
 })
 
-// 清理浏览器实例的函数
+// 清理浏览器实例
 async function cleanupBrowserInstances() {
     try {
-        console.log('🧹 清理浏览器实例和上下文...')
+        console.log('🧹 清理浏览器实例...')
         
-        // 设置标志阻止自动重连
+        // 设置重启标志
         global.restarting = true
         
-        // 清理浏览器上下文池
-        if (global.contextPool && typeof global.contextPool.cleanup === 'function') {
-            await global.contextPool.cleanup()
-        }
-        
-        // 清理全局浏览器上下文
-        if (global.browserContexts) {
-            for (const context of global.browserContexts.values()) {
-                try {
-                    await context.close()
-                } catch (e) {
-                    console.warn('关闭上下文时出现警告:', e.message)
-                }
+        // 等待所有活跃请求完成
+        if (global.monitoringData.activeRequests.size > 0) {
+            console.log(`⏳ 等待 ${global.monitoringData.activeRequests.size} 个活跃请求完成...`)
+            
+            // 最多等待10秒
+            const maxWait = 10000
+            const startWait = Date.now()
+            
+            while (global.monitoringData.activeRequests.size > 0 && (Date.now() - startWait < maxWait)) {
+                await new Promise(resolve => setTimeout(resolve, 500))
             }
-            global.browserContexts.clear()
+            
+            if (global.monitoringData.activeRequests.size > 0) {
+                console.log(`⚠️ 仍有 ${global.monitoringData.activeRequests.size} 个活跃请求，但已达到最大等待时间`)
+            } else {
+                console.log('✅ 所有活跃请求已完成')
+            }
         }
         
-        // 清理全局浏览器实例
+        // 关闭浏览器实例
         if (global.browser) {
+            console.log('🔒 关闭主浏览器实例...')
             try {
-                // 移除事件监听器避免重连
-                global.browser.removeAllListeners('disconnected')
                 await global.browser.close()
                 global.browser = null
             } catch (e) {
-                console.warn('关闭浏览器时出现警告:', e.message)
+                console.error('关闭浏览器实例失败:', e.message)
+            }
+        }
+        
+        // 关闭上下文池
+        if (global.contextPool) {
+            console.log('🔒 关闭浏览器上下文池...')
+            try {
+                await global.contextPool.closeAll()
+            } catch (e) {
+                console.error('关闭上下文池失败:', e.message)
             }
         }
         
@@ -769,10 +630,7 @@ async function performAutoRestart() {
             recentTokens: [],
             requestHistory: [],
             activeRequestsByService: {
-                cloudflare: 0,
-                hcaptcha: 0,
-                recaptchav2: 0,
-                recaptchav3: 0
+                cloudflare: 0
             },
             lastRequestTime: new Date()
         }
@@ -816,38 +674,68 @@ app.get('/health', (_, res) => {
     res.status(200).send('healthy\n')
 })
 
-app.use((_, res) => { res.status(404).json({ code: 404, message: 'Not Found' }) })
+// 浏览器状态检查端点
+app.get('/browser-status', (_, res) => {
+    const status = {
+        browserExists: !!global.browser,
+        browserInitFailed: !!global.browserInitFailed,
+        restarting: !!global.restarting,
+        contextPoolExists: !!global.contextPool,
+        contextPoolSize: global.contextPool ? global.contextPool.available.length : 0,
+        browserContextsCount: global.browserContexts ? global.browserContexts.size : 0
+    };
+    res.json(status);
+})
 
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
+// 性能统计端点
+app.get('/api/performance', (_, res) => {
+    try {
+        const memoryStats = memoryManager.getMemoryStats();
+        const contextPoolStatus = global.contextPool ? global.contextPool.getPoolStatus() : null;
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+        const performanceData = {
+            timestamp: new Date(),
+            memory: {
+                management: {
+                    mode: memoryManager.memoryManagementMode || 'manual',
+                    systemTotalMB: memoryManager.systemTotalMemoryMB,
+                    currentLimitMB: memoryManager.maxHeapUsage,
+                    pressureLevel: memoryStats.pressureLevel || '未知'
+                },
+                process: memoryStats.process,
+                system: memoryStats.system,
+                cpu: memoryStats.cpu,
+                pressureHistory: memoryManager.memoryPressureHistory ?
+                    memoryManager.memoryPressureHistory.slice(-20) : []
+            },
+            contextPool: contextPoolStatus,
+            capacity: capacityManager.getCapacityStatus(),
+            requests: {
+                active: global.monitoringData.activeRequests.size,
+                total: global.monitoringData.totalRequests,
+                successful: global.monitoringData.successfulRequests,
+                failed: global.monitoringData.failedRequests,
+                successRate: global.monitoringData.totalRequests > 0 ?
+                    ((global.monitoringData.successfulRequests / global.monitoringData.totalRequests) * 100).toFixed(2) + '%' : '0%'
+            },
+            uptime: {
+                startTime: global.monitoringData.startTime,
+                uptimeMs: Date.now() - global.monitoringData.startTime.getTime(),
+                lastRequestTime: global.monitoringData.lastRequestTime
+            }
+        };
 
-app.use((err, _, res, __) => {
-  console.error('Express error handler:', err);
-  res.status(500).json({
-    code: 500,
-    message: 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
-
-// 清理函数用于测试
-function cleanup() {
-    memoryManager.stopMonitoring()
-    if (global.cleanupTimer) {
-        clearInterval(global.cleanupTimer)
+        res.json(performanceData);
+    } catch (error) {
+        console.error('获取性能数据失败:', error.message);
+        res.status(500).json({ error: '获取性能数据失败', message: error.message });
     }
-    if (global.autoRestartTimer) {
-        clearInterval(global.autoRestartTimer)
-    }
+})
+
+// 启动自动重启检查
+if (process.env.NODE_ENV !== 'test') {
+    startAutoRestartCheck()
 }
 
-if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
-    module.exports = { app, cleanup }
-} else {
-    module.exports = app
-}
+// 导出app实例（用于测试）
+module.exports = app

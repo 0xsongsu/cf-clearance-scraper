@@ -1,24 +1,31 @@
-# API 使用指南
+# CF Clearance Scraper API 文档
 
-## API 端点
+专业的 Cloudflare 保护绕过 API，支持 Turnstile 令牌生成和 cf_clearance Cookie 获取。
 
-**统一API端点**: `POST /solve`
+## 🚀 快速开始
 
-支持的服务类型：
+**基础端点**: `POST http://localhost:3000/`
+
+**支持的服务类型**:
 - `cftoken` - Cloudflare Turnstile 令牌生成
-- `hcaptcha` - hCaptcha 验证码解决
-- `recaptchav2` - reCAPTCHA v2 验证码解决
-- `recaptchav3` - reCAPTCHA v3 验证码解决
-- `cfcookie` - 获取 cf_clearance Cookie
+- `cfcookie` - 获取 cf_clearance Cookie 和完整请求头
 
-**标准响应格式**: `{code: 200, message: "success", token/cf_clearance: "xxx"}`
+**标准响应格式**: 
+```json
+{
+  "code": 200,
+  "message": "success", 
+  "token": "xxx"  // 或其他数据字段
+}
+```
 
-## Cloudflare 功能
+## 🔐 Cloudflare 功能
 
-### 1. 生成 Turnstile 令牌
+### 1. Turnstile 令牌生成
 
-生成 Cloudflare Turnstile 验证令牌：
+自动解决 Cloudflare Turnstile 验证并生成令牌：
 
+**请求示例**:
 ```javascript
 const response = await fetch('http://localhost:3000/', {
     method: 'POST',
@@ -34,15 +41,193 @@ const response = await fetch('http://localhost:3000/', {
 
 const result = await response.json();
 if (result.code === 200) {
-    console.log('Turnstile token:', result.token);
+    console.log('✅ Turnstile token:', result.token);
+    // 使用 token 进行表单提交
 } else {
-    console.error('Error:', result.message);
+    console.error('❌ Error:', result.message);
 }
 ```
 
-### 2. 获取 cf_clearance Cookie
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "Turnstile solved successfully",
+  "token": "0.Af8GoLvQGCd3-S8CSCdNJg4R1vLZLNhXvOkiV..."
+}
+```
 
-获取 Cloudflare 防护页面的 cf_clearance cookie：
+### 2. cf_clearance Cookie 获取
+
+绕过 Cloudflare 保护页面，获取完整的浏览器环境信息：
+
+**请求示例**:
+```javascript
+const response = await fetch('http://localhost:3000/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        type: "cfcookie",
+        websiteUrl: "https://loyalty.campnetwork.xyz/home"
+    })
+});
+
+const result = await response.json();
+if (result.code === 200) {
+    console.log('✅ cf_clearance:', result.cf_clearance);
+    console.log('✅ Headers:', result.headers);
+    console.log('✅ All cookies:', result.cookies);
+    
+    // 使用完整信息访问网站
+    const siteResponse = await fetch(result.url, {
+        headers: {
+            ...result.headers,
+            'Cookie': result.cookies.map(c => `${c.name}=${c.value}`).join('; ')
+        }
+    });
+} else {
+    console.error('❌ Error:', result.message);
+}
+```
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "cf_clearance": "E6bpu3iHjpzZYCGB5EBrmRbeBNDOKRRxP8wbTMA9ojU-175274...",
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
+    "Accept": "text/html,application/xhtml+xml,application/xml...",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0"
+  },
+  "cookies": [
+    {
+      "name": "cf_clearance",
+      "value": "E6bpu3iHjpzZYCGB5EBrmRbeBNDOKRRxP8wbTMA9ojU-175274...",
+      "domain": ".campnetwork.xyz",
+      "path": "/",
+      "expires": 1737187680.931,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "url": "https://loyalty.campnetwork.xyz/home",
+  "timestamp": "2025-07-17T09:28:00.931Z"
+}
+```
+
+## 📊 监控和管理 API
+
+### 1. 服务状态监控
+
+获取服务的实时状态信息：
+
+**请求**: `GET /api/monitor`
+
+**响应示例**:
+```json
+{
+  "status": "running",
+  "uptime": {
+    "hours": 2,
+    "minutes": 45,
+    "seconds": 30
+  },
+  "requests": {
+    "total": 120,
+    "successful": 118,
+    "failed": 2,
+    "successRate": "98.33%"
+  },
+  "memory": {
+    "used": "256 MB",
+    "max": "3686 MB",
+    "percent": "6.94%",
+    "management": {
+      "mode": "auto",
+      "pressureLevel": "低压力",
+      "maxHeapUsage": 3686
+    }
+  },
+  "performance": {
+    "contextPool": {
+      "available": 8,
+      "used": 2,
+      "total": 10,
+      "maxSize": 50,
+      "performance": {
+        "totalCreated": 15,
+        "totalReused": 105,
+        "totalRecycled": 5,
+        "reuseRate": 87
+      }
+    },
+    "capacity": {
+      "mode": "auto",
+      "systemInfo": {
+        "cpuCores": 11,
+        "totalMemoryGB": 18
+      },
+      "limits": {
+        "maxConcurrentRequests": 165,
+        "contextPoolSize": 50
+      }
+    }
+  }
+}
+```
+
+### 2. 性能详情
+
+获取详细的性能统计信息：
+
+**请求**: `GET /api/performance`
+
+**响应包含**:
+- 内存使用详情
+- CPU使用率
+- 上下文池状态
+- 容量管理配置
+- 请求统计
+- 性能历史数据
+
+### 3. 服务管理
+
+#### 重启服务
+
+**请求**: `POST /api/service/restart`
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "message": "Service restarted successfully"
+}
+```
+
+#### 健康检查
+
+**请求**: `GET /health`
+
+**响应**: `healthy`
+
+## 🔧 高级功能
+
+### 代理支持
+
+所有API都支持通过代理发送请求：
 
 ```javascript
 const response = await fetch('http://localhost:3000/', {
@@ -52,406 +237,86 @@ const response = await fetch('http://localhost:3000/', {
     },
     body: JSON.stringify({
         type: "cfcookie",
-        websiteUrl: "https://example.com"
-    })
-});
-
-const result = await response.json();
-if (result.code === 200) {
-    console.log('cf_clearance:', result.cf_clearance);
-    // 使用 cookie 进行后续请求
-    const cookieHeader = `cf_clearance=${result.cf_clearance}`;
-} else {
-    console.error('Error:', result.message);
-}
-```
-
-## 验证码解决功能
-
-### hCaptcha 解决
-
-**环境要求**:
-- Google Gemini API Key
-- Python 3.8+ 和 Playwright
-
-**基本用法**:
-
-```javascript
-const response = await fetch('http://localhost:3000/solve', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-        type: "hcaptcha",
-        websiteUrl: "https://accounts.hcaptcha.com/demo",
-        websiteKey: "338af34c-7bcb-4c7c-900b-acbec73d7d43"
-    })
-});
-
-const result = await response.json();
-if (result.code === 200) {
-    console.log('hCaptcha solved successfully!');
-    console.log('Token:', result.token);
-} else {
-    console.error('Failed to solve hCaptcha:', result.message);
-}
-```
-
-### reCAPTCHA v2 解决
-
-**环境要求**:
-- FFmpeg (音频挑战)
-- Gemini API Key (图像挑战)
-
-```javascript
-const response = await fetch('http://localhost:3000/solve', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-        type: "recaptchav2",
         websiteUrl: "https://example.com",
-        websiteKey: "6Le-wvkSAAAAAPBMRTvw0Q4Muexq9bi0DJwx_mJ-",
-        method: "audio" // 或 "image"
+        proxy: {
+            host: "proxy.example.com",
+            port: 8080,
+            username: "user",  // 可选
+            password: "pass"   // 可选
+        }
     })
 });
-
-const result = await response.json();
-if (result.code === 200) {
-    console.log('reCAPTCHA v2 solved!');
-    console.log('Token:', result.token);
-    console.log('Challenge Type:', result.challengeType);
-    console.log('Solve Time:', result.solveTime);
-}
 ```
 
-### reCAPTCHA v3 解决
-
-**环境要求**: 无额外依赖
-
-```javascript
-const response = await fetch('http://localhost:3000/solve', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-        type: "recaptchav3",
-        websiteUrl: "https://example.com",
-        websiteKey: "6Le-wvkSAAAAAPBMRTvw0Q4Muexq9bi0DJwx_mJ-",
-        pageAction: "submit"
-    })
-});
-
-const result = await response.json();
-if (result.code === 200) {
-    console.log('reCAPTCHA v3 solved!');
-    console.log('Token:', result.token);
-    console.log('Score:', result.score);
-    console.log('Solve Time:', result.solveTime);
-}
-```
-
-### 性能对比
-
-| 验证码类型 | 平均解决时间 | 成功率 | 环境要求 |
-|-----------|------------|--------|----------|
-| hCaptcha | 20-60秒 | 85-95% | Gemini API + Python |
-| reCAPTCHA v2 (音频) | 30-50秒 | 85-95% | FFmpeg + 语音识别 |
-| reCAPTCHA v2 (图像) | 30-50秒 | 80-90% | Gemini API |
-| reCAPTCHA v3 | 30-50秒 | 95-99% | 目前还需要定制网站才行 |
-
-## 代理支持
-
-所有服务类型都支持代理配置：
-
-```javascript
-{
-    type: "cftoken", // 或 "hcaptcha", "cfcookie"
-    websiteUrl: "https://example.com",
-    websiteKey: "your-site-key", // cftoken 和 hcaptcha 需要
-    proxy: {
-        host: "127.0.0.1",
-        port: 8080,
-        username: "user", // 可选
-        password: "pass"  // 可选
-    }
-}
-```
-
-## 认证
+### 认证支持
 
 如果服务设置了认证令牌，需要在请求中包含：
 
 ```javascript
-{
-    type: "cftoken", // 或 "hcaptcha", "cfcookie"
-    websiteUrl: "https://example.com",
-    websiteKey: "your-site-key", // cftoken 和 hcaptcha 需要
-    authToken: "your-auth-token"
-}
-```
-
-## 响应格式
-
-### 成功响应
-
-```json
-{
-    "code": 200,
-    "token": "turnstile_token...",      // cftoken/hcaptcha 类型
-    "cf_clearance": "cookie_value...", // cfcookie 类型
-    "message": "success"               // 可选成功消息
-}
-```
-
-### 错误响应
-
-```json
-{
-    "code": 500,
-    "message": "错误描述",
-    "token": null
-}
-```
-
-### 状态码说明
-
-- `200` - 请求成功
-- `400` - 请求参数错误
-- `401` - 认证失败 (当设置了 authToken)
-- `429` - 请求过多 (超过并发限制)
-- `500` - 服务器内部错误
-
-## Python 示例
-
-```python
-import requests
-import json
-
-def solve_hcaptcha(website_url, website_key):
-    url = "http://localhost:3000/"
-    
-    payload = {
-        "type": "hcaptcha",
-        "websiteUrl": website_url,
-        "websiteKey": website_key
-    }
-    
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    response = requests.post(url, json=payload, headers=headers, timeout=300)
-    result = response.json()
-    
-    if result.get("code") == 200:
-        print(f"✅ hCaptcha solved successfully!")
-        print(f"Token: {result['token'][:50]}...")
-        return result["token"]
-    else:
-        print(f"❌ Failed: {result.get('message')}")
-        return None
-
-# 使用示例
-token = solve_hcaptcha(
-    "https://accounts.hcaptcha.com/demo", 
-    "338af34c-7bcb-4c7c-900b-acbec73d7d43"
-)
-```
-
-## 性能优化
-
-### 并发请求
-
-```javascript
-// 并发处理多个请求
-const requests = [
-    solve_captcha("https://site1.com", "key1"),
-    solve_captcha("https://site2.com", "key2"),
-    solve_captcha("https://site3.com", "key3")
-];
-
-const results = await Promise.all(requests);
-```
-
-### 错误重试
-
-```javascript
-async function solve_with_retry(websiteUrl, websiteKey, maxRetries = 3) {
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            const response = await fetch('http://localhost:3000/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: "hcaptcha",
-                    websiteUrl,
-                    websiteKey
-                })
-            });
-            
-            const result = await response.json();
-            if (result.code === 200) {
-                return result.token;
-            }
-            
-            console.log(`Attempt ${i + 1} failed: ${result.message}`);
-        } catch (error) {
-            console.log(`Attempt ${i + 1} error: ${error.message}`);
-        }
-        
-        // 等待重试
-        if (i < maxRetries - 1) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-    }
-    
-    throw new Error('All retry attempts failed');
-}
-```
-
-## 完整示例
-
-### 获取 cf_clearance 并使用
-
-```javascript
-async function getCfClearanceAndUse(targetUrl) {
-    // 1. 获取 cf_clearance cookie
-    const response = await fetch('http://localhost:3000/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            type: "cfcookie",
-            websiteUrl: targetUrl
-        })
-    });
-    
-    const result = await response.json();
-    if (result.code !== 200) {
-        throw new Error(`Failed to get cf_clearance: ${result.message}`);
-    }
-    
-    // 2. 使用 cf_clearance 访问目标网站
-    const siteResponse = await fetch(targetUrl, {
-        headers: {
-            'Cookie': `cf_clearance=${result.cf_clearance}`,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-    });
-    
-    return await siteResponse.text();
-}
-
-// 使用示例
-getCfClearanceAndUse('https://example.com')
-    .then(html => console.log('页面内容获取成功'))
-    .catch(err => console.error('获取失败:', err));
-```
-
-### 批量处理多个站点
-
-```javascript
-async function solveBatchCaptchas(sites) {
-    const requests = sites.map(site => 
-        fetch('http://localhost:3000/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                type: site.type, // "cftoken", "hcaptcha", "cfcookie"
-                websiteUrl: site.url,
-                websiteKey: site.key // 如果需要
-            })
-        }).then(res => res.json())
-    );
-    
-    const results = await Promise.all(requests);
-    return results.map((result, index) => ({
-        site: sites[index].url,
-        success: result.code === 200,
-        data: result.token || result.cf_clearance || null,
-        error: result.message
-    }));
-}
-
-// 使用示例
-const sites = [
-    { type: "cftoken", url: "https://site1.com", key: "key1" },
-    { type: "hcaptcha", url: "https://site2.com", key: "key2" },
-    { type: "cfcookie", url: "https://site3.com" }
-];
-
-solveBatchCaptchas(sites)
-    .then(results => console.log('批量处理结果:', results));
-```
-
-### 错误重试机制
-
-```javascript
-async function solveWithRetry(params, maxRetries = 3) {
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            const response = await fetch('http://localhost:3000/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(params)
-            });
-            
-            const result = await response.json();
-            if (result.code === 200) {
-                return result;
-            }
-            
-            console.log(`Attempt ${i + 1} failed: ${result.message}`);
-        } catch (error) {
-            console.log(`Attempt ${i + 1} error: ${error.message}`);
-        }
-        
-        // 等待重试
-        if (i < maxRetries - 1) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-    }
-    
-    throw new Error('All retry attempts failed');
-}
-
-// 使用示例
-solveWithRetry({
-    type: "cftoken",
-    websiteUrl: "https://example.com",
-    websiteKey: "your-site-key"
-}, 3).then(result => {
-    console.log('成功获取token:', result.token);
-}).catch(err => {
-    console.error('重试失败:', err);
+const response = await fetch('http://localhost:3000/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        type: "cftoken",
+        websiteUrl: "https://example.com",
+        websiteKey: "your-site-key",
+        authToken: "your-auth-token"
+    })
 });
 ```
 
-## 健康检查
+## 📈 性能特性
 
-```bash
-# 检查服务状态
-curl http://localhost:3000/health
+### 智能内存管理
+- 自动检测系统内存并设置最优限制
+- 根据内存压力动态调节
+- 支持手动配置覆盖
 
-# 获取监控数据
-curl http://localhost:3000/api/monitor
+### 智能容量管理
+- 根据CPU核心数和内存自动计算并发数
+- 根据CPU负载动态调节
+- 智能上下文池复用
+
+### 实时监控
+- Web监控界面：`http://localhost:3000/monitor`
+- 性能统计API
+- 请求历史追踪
+
+## 🚨 错误处理
+
+### 常见错误码
+
+| 错误码 | 说明 | 解决方案 |
+|--------|------|----------|
+| 400 | 请求参数错误 | 检查必需参数 |
+| 401 | 认证失败 | 检查authToken |
+| 429 | 请求过多 | 降低请求频率 |
+| 500 | 服务器错误 | 查看服务日志 |
+| 503 | 服务不可用 | 等待服务恢复 |
+
+### 错误响应格式
+
+```json
+{
+  "code": 400,
+  "message": "websiteUrl is required",
+  "token": null
+}
 ```
 
-## 限制说明
+## 💡 最佳实践
 
-### 并发限制
-- 默认最大并发请求数：100
-- 可通过 `MAX_CONCURRENT_REQUESTS` 配置调整
+1. **合理设置超时时间**：cfcookie请求可能需要60-120秒
+2. **处理失败重试**：网络问题可能导致偶发失败
+3. **监控服务状态**：定期检查`/api/monitor`端点
+4. **使用完整cookie信息**：cfcookie返回的所有cookies都可能有用
+5. **保持User-Agent一致**：使用返回的headers中的User-Agent
 
-### 超时限制
-- 默认请求超时：5分钟 (300秒)
-- hCaptcha 解决通常需要 20-60 秒
-- 可通过 `TIMEOUT` 配置调整
+## 🔗 相关链接
 
-### 内存限制
-- 默认最大内存使用：512MB
-- 可通过 `MAX_MEMORY_USAGE` 配置调整
-- 自动内存清理机制
+- [配置指南](CONFIGURATION.md)
+- [性能优化](PERFORMANCE_OPTIMIZATION.md)
+- [故障排除](TROUBLESHOOTING.md)
+- [Web监控界面](http://localhost:3000/monitor)

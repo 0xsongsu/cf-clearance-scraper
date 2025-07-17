@@ -16,9 +16,9 @@ const defaultConfig = {
     browserLimit: Number(process.env.BROWSER_LIMIT) || 25,
     timeOut: Number(process.env.TIMEOUT) || 60000,
     memoryCleanupInterval: Number(process.env.MEMORY_CLEANUP_INTERVAL) || 300000,
-    maxMemoryUsage: Number(process.env.MAX_MEMORY_USAGE) || 512,
-    maxConcurrentRequests: Number(process.env.MAX_CONCURRENT_REQUESTS) || 60,
-    contextPoolSize: Number(process.env.CONTEXT_POOL_SIZE) || 20
+    maxMemoryUsage: Number(process.env.MAX_MEMORY_USAGE) || 0, // 0表示启用自动模式
+    maxConcurrentRequests: Number(process.env.MAX_CONCURRENT_REQUESTS) || 0, // 0表示启用自动模式
+    contextPoolSize: Number(process.env.CONTEXT_POOL_SIZE) || 0 // 0表示启用自动模式
 };
 
 // 解析命令行参数

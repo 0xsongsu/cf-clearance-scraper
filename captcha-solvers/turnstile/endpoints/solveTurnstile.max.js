@@ -3,6 +3,14 @@ function solveTurnstileMin({ url, proxy }) {
   return new Promise(async (resolve, reject) => {
     if (!url) return reject("Missing url parameter");
 
+    // 检查浏览器是否已初始化
+    if (!global.browser) {
+      if (global.browserInitFailed) {
+        return reject("浏览器初始化失败，请检查Chrome安装和配置");
+      }
+      return reject("浏览器正在初始化中，请稍后重试");
+    }
+
     const context = await global.browser
       .createBrowserContext({
         proxyServer: proxy ? `http://${proxy.host}:${proxy.port}` : undefined, // https://pptr.dev/api/puppeteer.browsercontextoptions
