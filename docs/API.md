@@ -229,7 +229,9 @@ if (result.code === 200) {
 
 ### 代理支持
 
-所有API都支持通过代理发送请求：
+所有API都支持通过代理发送请求，支持多种代理格式：
+
+#### 1. 对象格式（推荐）
 
 ```javascript
 const response = await fetch('http://localhost:3000/', {
@@ -246,6 +248,52 @@ const response = await fetch('http://localhost:3000/', {
             username: "user",  // 可选
             password: "pass"   // 可选
         }
+    })
+});
+```
+
+#### 2. URL格式（新增支持）
+
+```javascript
+// 支持多种URL格式
+const proxyFormats = [
+    "http://username:password@proxy.example.com:8080",
+    "https://user:pass@secure-proxy.com:8443",
+    "socks5://user:pass@socks.proxy.com:1080",
+    "http://proxy.example.com:8080",  // 无认证
+    "proxy.example.com:8080",         // 简化格式
+    "username:password@proxy.example.com:8080"
+];
+
+const response = await fetch('http://localhost:3000/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        type: "cf5s",
+        websiteUrl: "https://example.com",
+        proxy: "http://username:password@proxy.example.com:8080"
+    })
+});
+```
+
+#### 3. URL编码支持
+
+代理URL支持URL编码的用户名和密码：
+
+```javascript
+// 特殊字符会自动解码
+const response = await fetch('http://localhost:3000/', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        type: "cf5s",
+        websiteUrl: "https://example.com",
+        proxy: "http://user%40domain.com:pass%23123@proxy.example.com:8080"
+        // 解码后: user@domain.com:pass#123
     })
 });
 ```

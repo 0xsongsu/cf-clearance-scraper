@@ -10,6 +10,7 @@ const cors = require('cors')
 const reqValidate = require('../captcha-solvers/turnstile/module/reqValidate')
 const memoryManager = require('./utils/memoryManager')
 const capacityManager = require('./utils/capacityManager')
+const { parseProxy } = require('./utils/proxyParser')
 
 // 请求计数器（替代浏览器实例计数）
 global.activeRequestCount = 0
@@ -122,19 +123,32 @@ async function handleCftokenRequest(req, res) {
 
     // 参数验证
     if (!data.websiteUrl) {
-        return res.status(400).json({ 
-            code: 400, 
+        return res.status(400).json({
+            code: 400,
             message: 'websiteUrl is required',
-            token: null 
+            token: null
         });
     }
 
     if (!data.websiteKey) {
-        return res.status(400).json({ 
-            code: 400, 
+        return res.status(400).json({
+            code: 400,
             message: 'websiteKey is required',
-            token: null 
+            token: null
         });
+    }
+
+    // 解析代理配置 - 支持URL格式和对象格式
+    let parsedProxy = null;
+    if (data.proxy) {
+        parsedProxy = parseProxy(data.proxy);
+        if (!parsedProxy) {
+            return res.status(400).json({
+                code: 400,
+                message: 'Invalid proxy configuration. Supported formats: "http://username:password@host:port" or {"host": "...", "port": ...}',
+                token: null
+            });
+        }
     }
 
     // 转换为内部格式
@@ -142,6 +156,7 @@ async function handleCftokenRequest(req, res) {
         url: data.websiteUrl,
         siteKey: data.websiteKey,
         mode: 'turnstile-min',
+        proxy: parsedProxy,
         authToken: data.authToken
     };
 
@@ -162,11 +177,24 @@ async function handleCf5sRequest(req, res) {
         });
     }
 
+    // 解析代理配置 - 支持URL格式和对象格式
+    let parsedProxy = null;
+    if (data.proxy) {
+        parsedProxy = parseProxy(data.proxy);
+        if (!parsedProxy) {
+            return res.status(400).json({
+                code: 400,
+                message: 'Invalid proxy configuration. Supported formats: "http://username:password@host:port" or {"host": "...", "port": ...}',
+                token: null
+            });
+        }
+    }
+
     // 转换为内部格式
     const internalData = {
         url: data.websiteUrl,
         mode: 'cf5s',
-        proxy: data.proxy,
+        proxy: parsedProxy,
         authToken: data.authToken
     };
 
