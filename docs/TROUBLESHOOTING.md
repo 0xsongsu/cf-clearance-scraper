@@ -62,14 +62,69 @@ npm install
 yarn install
 ```
 
-#### 4. Chrome 浏览器问题
+#### 4. Chrome 浏览器问题 ⭐ **Windows 重点**
 
 **错误信息**:
 ```
+❌ 未找到任何Chrome浏览器安装
 Error: Could not find browser
+Browser launch config: { headless: false, turnstile: true, width: 520, height: 240 }
 ```
 
-**解决方案**:
+**Windows 系统解决方案**:
+
+**方法1: 设置环境变量（推荐）**
+```cmd
+# 在命令提示符中设置Chrome路径
+set CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
+
+# 或者设置到用户环境变量（永久生效）
+setx CHROME_PATH "C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+# 然后重新启动服务
+npm start
+```
+
+**方法2: 检查Chrome安装位置**
+```cmd
+# 检查常见Chrome安装路径
+dir "C:\Program Files\Google\Chrome\Application\chrome.exe"
+dir "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+dir "%USERPROFILE%\AppData\Local\Google\Chrome\Application\chrome.exe"
+
+# 如果找到Chrome，记录完整路径并设置环境变量
+```
+
+**方法3: 重新安装Chrome**
+```cmd
+# 1. 下载Chrome安装程序
+# 访问: https://www.google.com/chrome/
+
+# 2. 以管理员身份运行安装程序
+# 右键点击安装程序 -> "以管理员身份运行"
+
+# 3. 选择"为所有用户安装"选项
+```
+
+**方法4: 使用管理员权限**
+```cmd
+# 以管理员身份打开命令提示符
+# 右键点击"命令提示符" -> "以管理员身份运行"
+
+# 然后运行服务
+cd /d "你的项目路径"
+npm start
+```
+
+**方法5: 检查Windows防火墙和杀毒软件**
+```cmd
+# 临时关闭Windows Defender实时保护
+# 设置 -> 更新和安全 -> Windows安全中心 -> 病毒和威胁防护
+
+# 或者将项目文件夹添加到排除列表
+```
+
+**其他系统解决方案**:
 ```bash
 # Mac
 brew install --cask google-chrome
@@ -82,6 +137,14 @@ sudo apt install google-chrome-stable
 
 # CentOS/RHEL
 sudo yum install -y google-chrome-stable
+```
+
+**验证Chrome安装**:
+```cmd
+# Windows - 在命令提示符中测试Chrome
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --version
+
+# 应该显示类似: Google Chrome 120.0.6099.109
 ```
 
 ### API 请求问题

@@ -187,7 +187,25 @@ open http://localhost:3000/monitor
 
 ## 💡 小贴士
 
+### 通用提示
 - 首次启动可能需要下载 Chrome 浏览器，请耐心等待
 - 建议在生产环境中使用 PM2 管理进程
 - 定期查看监控面板了解服务状态
 - 遇到问题请先查看故障排除文档
+
+### Windows 用户特别提示 🪟
+- **Chrome路径问题**: 如果遇到"未找到Chrome"错误，请设置环境变量：
+  ```cmd
+  set CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
+  ```
+- **权限问题**: 建议以管理员身份运行命令提示符
+- **防火墙设置**: 确保Windows防火墙允许Node.js和Chrome访问网络
+- **杀毒软件**: 将项目文件夹添加到杀毒软件的排除列表中
+
+### macOS 用户提示 🍎
+- 首次运行可能需要在"系统偏好设置"中允许Chrome运行
+- 如遇权限问题，尝试：`sudo xattr -d com.apple.quarantine /Applications/Google\ Chrome.app`
+
+### Linux 用户提示 🐧
+- 确保安装了必要的图形界面库：`sudo apt install xvfb`
+- 无头服务器环境可能需要额外配置显示服务器

@@ -336,41 +336,122 @@ async function createBrowser(options = {}) {
             height
         })
 
-        // 尝试多个Chrome路径
-        const chromePaths = [
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            '/Applications/Chromium.app/Contents/MacOS/Chromium',
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium'
-        ];
+        // 根据操作系统检测Chrome路径
+        const os = require('os');
+        const path = require('path');
+        const platform = os.platform();
+
+        let chromePaths = [];
+
+        // 优先检查环境变量指定的Chrome路径
+        const customChromePath = process.env.CHROME_PATH || process.env.CHROME_EXECUTABLE;
+        if (customChromePath) {
+            console.log(`🎯 使用自定义Chrome路径: ${customChromePath}`);
+            chromePaths.push(customChromePath);
+        }
+
+        if (platform === 'win32') {
+            // Windows Chrome路径
+            const userProfile = process.env.USERPROFILE || process.env.HOME;
+            const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+            const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+
+            chromePaths = [
+                // 用户安装的Chrome
+                path.join(userProfile, 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'),
+                // 系统安装的Chrome (64位)
+                path.join(programFiles, 'Google\\Chrome\\Application\\chrome.exe'),
+                // 系统安装的Chrome (32位)
+                path.join(programFilesX86, 'Google\\Chrome\\Application\\chrome.exe'),
+                // Chromium路径
+                path.join(userProfile, 'AppData\\Local\\Chromium\\Application\\chrome.exe'),
+                path.join(programFiles, 'Chromium\\Application\\chrome.exe'),
+                path.join(programFilesX86, 'Chromium\\Application\\chrome.exe'),
+                // Edge (基于Chromium)
+                path.join(programFiles, 'Microsoft\\Edge\\Application\\msedge.exe'),
+                path.join(programFilesX86, 'Microsoft\\Edge\\Application\\msedge.exe'),
+                // 常见的便携版路径
+                'C:\\chrome\\chrome.exe',
+                'C:\\chromium\\chrome.exe'
+            ];
+        } else if (platform === 'darwin') {
+            // macOS Chrome路径
+            chromePaths = [
+                '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                '/Applications/Chromium.app/Contents/MacOS/Chromium',
+                '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+            ];
+        } else {
+            // Linux Chrome路径
+            chromePaths = [
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium',
+                '/snap/bin/chromium',
+                '/usr/bin/microsoft-edge-stable',
+                '/usr/bin/microsoft-edge'
+            ];
+        }
 
         let browser = null;
         let lastError = null;
+        const fs = require('fs');
 
-        for (const chromePath of chromePaths) {
+        console.log(`🔍 检测到操作系统: ${platform}`);
+        console.log(`🔍 开始检测Chrome浏览器路径...`);
+
+        // 首先检查哪些路径存在
+        const existingPaths = chromePaths.filter(chromePath => {
+            const exists = fs.existsSync(chromePath);
+            if (exists) {
+                console.log(`✅ 找到Chrome: ${chromePath}`);
+            }
+            return exists;
+        });
+
+        if (existingPaths.length === 0) {
+            console.error(`❌ 未找到任何Chrome浏览器安装`);
+            console.error(`🔍 已检查的路径:`);
+            chromePaths.forEach(path => console.error(`   - ${path}`));
+
+            if (platform === 'win32') {
+                console.error(`\n💡 Windows用户解决方案:`);
+                console.error(`1. 请确保已安装Google Chrome浏览器`);
+                console.error(`2. 如果Chrome安装在非标准位置，请设置环境变量:`);
+                console.error(`   set CHROME_PATH=C:\\你的Chrome路径\\chrome.exe`);
+                console.error(`3. 或者下载Chrome: https://www.google.com/chrome/`);
+            }
+        } else {
+            console.log(`✅ 找到 ${existingPaths.length} 个可用的Chrome路径`);
+        }
+
+        for (const chromePath of existingPaths) {
             try {
-                const fs = require('fs');
-                if (fs.existsSync(chromePath)) {
-                    console.log(`尝试使用Chrome路径: ${chromePath}`);
+                console.log(`🚀 尝试启动Chrome: ${chromePath}`);
 
-                    const result = await connect({
-                        headless: false,
-                        turnstile: true,
-                        executablePath: chromePath,
-                        connectOption: { defaultViewport: null },
-                        disableXvfb: true
-                    });
+                const result = await connect({
+                    headless: false,
+                    turnstile: true,
+                    executablePath: chromePath,
+                    connectOption: { defaultViewport: null },
+                    disableXvfb: true,
+                    args: platform === 'win32' ? [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-web-security',
+                        '--disable-features=VizDisplayCompositor'
+                    ] : []
+                });
 
-                    if (result && result.browser) {
-                        browser = result.browser;
-                        console.log(`✅ 成功连接到Chrome: ${chromePath}`);
-                        break;
-                    }
+                if (result && result.browser) {
+                    browser = result.browser;
+                    console.log(`✅ 成功连接到Chrome: ${chromePath}`);
+                    break;
                 }
             } catch (e) {
-                console.log(`❌ Chrome路径失败 ${chromePath}: ${e.message}`);
+                console.log(`❌ Chrome启动失败 ${chromePath}: ${e.message}`);
                 lastError = e;
                 continue;
             }
@@ -386,10 +467,34 @@ async function createBrowser(options = {}) {
 
         if (!browser) {
             console.error("❌ 无法连接到浏览器")
-            console.error("请确保:")
-            console.error("1. Google Chrome 已安装")
-            console.error("2. Chrome 路径正确")
-            console.error("3. 系统有足够权限启动Chrome")
+            console.error("\n🔧 故障排除指南:")
+
+            if (platform === 'win32') {
+                console.error("Windows系统解决方案:")
+                console.error("1. 确保已安装Google Chrome浏览器")
+                console.error("   下载地址: https://www.google.com/chrome/")
+                console.error("2. 如果Chrome安装在非标准位置，设置环境变量:")
+                console.error("   set CHROME_PATH=C:\\你的Chrome路径\\chrome.exe")
+                console.error("   例如: set CHROME_PATH=C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe")
+                console.error("3. 确保Chrome没有被杀毒软件阻止")
+                console.error("4. 尝试以管理员身份运行此程序")
+                console.error("5. 检查Windows防火墙设置")
+            } else if (platform === 'darwin') {
+                console.error("macOS系统解决方案:")
+                console.error("1. 确保已安装Google Chrome")
+                console.error("2. 检查应用程序权限设置")
+                console.error("3. 尝试: sudo xattr -d com.apple.quarantine /Applications/Google\\ Chrome.app")
+            } else {
+                console.error("Linux系统解决方案:")
+                console.error("1. 安装Chrome: sudo apt install google-chrome-stable")
+                console.error("2. 或安装Chromium: sudo apt install chromium-browser")
+                console.error("3. 检查显示服务器设置 (X11/Wayland)")
+            }
+
+            console.error("\n📝 通用解决方案:")
+            console.error("1. 重启计算机后重试")
+            console.error("2. 关闭所有Chrome进程后重试")
+            console.error("3. 检查系统资源使用情况")
 
             // 检查是否在重启中，如果是则不重试
             if (global.restarting === true) {
