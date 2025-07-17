@@ -23,6 +23,18 @@ npm start
 
 🎉 **完成！** 访问 http://localhost:3000/monitor 查看监控面板
 
+### 🔧 Chrome路径问题？
+
+如果遇到"未找到Chrome浏览器"错误，运行诊断工具：
+
+```bash
+# 检测Chrome安装状态
+npm run check-chrome
+
+# Windows用户可以运行自动设置工具
+scripts\setup_chrome_windows.bat
+```
+
 ## 版本信息
 
 **当前版本：v1.1.0** 🚀
