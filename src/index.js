@@ -234,7 +234,6 @@ async function handleClearanceRequest(req, res, data) {
     global.activeRequestCount++
 
     // 调试日志：显示当前并发状态
-    const currentLimit = getCurrentConcurrentLimit();
     console.log(`📊 请求开始: ${global.activeRequestCount}/${currentLimit} (模式: ${data.mode}, URL: ${data.url})`);
     
     // 更新监控数据
@@ -353,9 +352,9 @@ async function handleClearanceRequest(req, res, data) {
     clearTimeout(requestTimeout)
 
     // 调试日志：显示请求完成后的并发状态
-    const currentLimit = getCurrentConcurrentLimit();
+    const completionLimit = getCurrentConcurrentLimit();
     const requestDuration = Date.now() - startTime;
-    console.log(`✅ 请求完成: ${global.activeRequestCount}/${currentLimit} (耗时: ${requestDuration}ms, 结果: ${result.code})`);
+    console.log(`✅ 请求完成: ${global.activeRequestCount}/${completionLimit} (耗时: ${requestDuration}ms, 结果: ${result.code})`);
     
     // 更新监控数据 - 先获取请求信息，再删除
     const request = global.monitoringData.activeRequests.get(requestId)
@@ -367,20 +366,20 @@ async function handleClearanceRequest(req, res, data) {
     
     global.monitoringData.activeRequests.delete(requestId)
     
-    // 记录请求历史
-    const requestDuration = requestStartTime ? (new Date() - requestStartTime) : 0
+    // 记录请求历史 - 使用已计算的requestDuration
+    const historyDuration = requestStartTime ? (new Date() - requestStartTime) : requestDuration
     const historyEntry = {
         id: requestId,
         url: data.url,
         mode: data.mode,
         startTime: requestStartTime,
         endTime: new Date(),
-        duration: requestDuration,
+        duration: historyDuration,
         success: result.code === 200,
         clientIP: req.ip || req.socket.remoteAddress,
         // 为监控页面兼容性添加的字段
         timestamp: requestStartTime,
-        responseTime: requestDuration
+        responseTime: historyDuration
     }
     
     global.monitoringData.requestHistory.unshift(historyEntry)
