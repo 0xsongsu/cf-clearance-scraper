@@ -475,7 +475,9 @@ app.get('/api/monitor', (_, res) => {
                     limit: actualConcurrentLimit,
                     configured: configuredLimit,
                     utilization: `${Math.round((global.activeRequestCount / actualConcurrentLimit) * 100)}%`,
-                    source: capacityManager?.maxConcurrentRequests ? 'smart' : 'configured'
+                    source: capacityManager?.maxConcurrentRequests ? 'extreme-performance' : 'configured',
+                    mode: '🔥 极致性能压榨模式',
+                    cpuMultiplier: capacityManager ? `${Math.round(actualConcurrentLimit / capacityManager.systemInfo.cpuCores)}x CPU核心` : 'N/A'
                 }
             },
             activeRequestsByService: global.monitoringData.activeRequestsByService,

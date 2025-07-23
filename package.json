@@ -10,6 +10,7 @@
     "test:cfcookie": "node tests/test_cfcookie.js",
     "test:proxy": "node test_proxy_support.js",
     "test:concurrent": "node test_concurrent_requests.js",
+    "test:extreme": "node test_extreme_performance.js",
     "check-chrome": "node scripts/check_chrome.js",
     "diagnose": "node scripts/check_chrome.js",
     "monitor": "bash scripts/performance_monitor.sh"

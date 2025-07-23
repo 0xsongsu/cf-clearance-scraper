@@ -6,9 +6,9 @@ class MemoryManager {
         this.systemTotalMemoryMB = Math.round(os.totalmem() / 1024 / 1024);
         this.initializeMemoryLimits();
 
-        this.gcThreshold = 0.6; // 60% of max heap - 更积极的GC
-        this.forceGcThreshold = 0.8; // 80% of max heap - 降低强制GC阈值
-        this.monitoringInterval = 15000; // 15 seconds - 更频繁的监控
+        this.gcThreshold = 0.85; // 85% of max heap - 极致内存使用
+        this.forceGcThreshold = 0.95; // 95% of max heap - 接近极限才强制GC
+        this.monitoringInterval = 10000; // 10 seconds - 更频繁的监控
         this.monitoring = false;
 
         // CPU监控相关 - 系统级监控
@@ -17,13 +17,13 @@ class MemoryManager {
         this.lastSystemCpuTotal = null;
         this.lastSystemCpuIdle = null;
 
-        // 动态调节相关
+        // 动态调节相关 - 极致性能版本
         this.lastMemoryCheck = Date.now();
         this.memoryPressureHistory = [];
         this.adaptiveThresholds = {
-            lowMemory: 0.5,    // 系统内存使用率低于50%时放宽限制
-            mediumMemory: 0.7, // 系统内存使用率50-70%时正常限制
-            highMemory: 0.85   // 系统内存使用率高于85%时严格限制
+            lowMemory: 0.7,    // 系统内存使用率低于70%时继续增加
+            mediumMemory: 0.85, // 系统内存使用率70-85%时正常限制
+            highMemory: 0.95   // 系统内存使用率高于95%时才严格限制
         };
     }
 
@@ -43,41 +43,45 @@ class MemoryManager {
         }
     }
 
-    // 计算最优内存限制
+    // 计算最优内存限制 - 极致性能压榨版本
     calculateOptimalMemoryLimit() {
         const totalMemoryMB = this.systemTotalMemoryMB;
         let optimalLimit;
 
+        console.log(`🔥 极致内存管理：专用机器，最大化内存使用`);
+        console.log(`   系统总内存: ${Math.round(totalMemoryMB / 1024 * 100) / 100}GB`);
+
         if (totalMemoryMB <= 1024) {
-            // 1GB及以下：使用30%
-            optimalLimit = Math.floor(totalMemoryMB * 0.3);
+            // 1GB及以下：使用70%（激进）
+            optimalLimit = Math.floor(totalMemoryMB * 0.7);
         } else if (totalMemoryMB <= 2048) {
-            // 1-2GB：使用35%
-            optimalLimit = Math.floor(totalMemoryMB * 0.35);
+            // 1-2GB：使用75%（激进）
+            optimalLimit = Math.floor(totalMemoryMB * 0.75);
         } else if (totalMemoryMB <= 4096) {
-            // 2-4GB：使用40%
-            optimalLimit = Math.floor(totalMemoryMB * 0.4);
+            // 2-4GB：使用80%（激进）
+            optimalLimit = Math.floor(totalMemoryMB * 0.8);
         } else if (totalMemoryMB <= 8192) {
-            // 4-8GB：使用45%
-            optimalLimit = Math.floor(totalMemoryMB * 0.45);
+            // 4-8GB：使用85%（激进）
+            optimalLimit = Math.floor(totalMemoryMB * 0.85);
         } else if (totalMemoryMB <= 16384) {
-            // 8-16GB：使用50%
-            optimalLimit = Math.floor(totalMemoryMB * 0.5);
+            // 8-16GB：使用85%（激进）
+            optimalLimit = Math.floor(totalMemoryMB * 0.85);
         } else if (totalMemoryMB <= 32768) {
-            // 16-32GB：使用50%，但不超过16GB
-            optimalLimit = Math.min(Math.floor(totalMemoryMB * 0.5), 16384);
+            // 16-32GB：使用80%（移除16GB限制）
+            optimalLimit = Math.floor(totalMemoryMB * 0.8);
         } else {
-            // 32GB以上：使用40%，但不超过20GB
-            optimalLimit = Math.min(Math.floor(totalMemoryMB * 0.4), 20480);
+            // 32GB以上：使用75%（移除20GB限制）
+            optimalLimit = Math.floor(totalMemoryMB * 0.75);
         }
 
         // 确保最小限制为256MB
         this.maxHeapUsage = Math.max(optimalLimit, 256);
 
-        console.log(`🧠 智能内存管理已启用:`);
-        console.log(`   系统总内存: ${totalMemoryMB}MB`);
-        console.log(`   计算的最优限制: ${this.maxHeapUsage}MB (${Math.round(this.maxHeapUsage / totalMemoryMB * 100)}%)`);
-        console.log(`   模式: 自动调节`);
+        console.log(`🔥 极致内存管理已启用:`);
+        console.log(`   系统总内存: ${totalMemoryMB}MB (${Math.round(totalMemoryMB / 1024 * 100) / 100}GB)`);
+        console.log(`   🚀 极致内存限制: ${this.maxHeapUsage}MB (${Math.round(this.maxHeapUsage / totalMemoryMB * 100)}%)`);
+        console.log(`   ⚡ 模式: 极致性能压榨 - 专用机器优化`);
+        console.log(`   ⚠️  警告: 此模式将最大化使用系统内存`);
     }
 
     startMonitoring() {
@@ -185,12 +189,10 @@ class MemoryManager {
         const originalLimit = this.maxHeapUsage;
 
         if (systemUsagePercent < this.adaptiveThresholds.lowMemory) {
-            // 系统内存压力低，可以适当放宽限制
-            const newLimit = Math.min(
-                Math.floor(this.systemTotalMemoryMB * 0.6), // 最多使用60%系统内存
-                originalLimit * 1.2 // 最多增加20%
-            );
-            this.maxHeapUsage = Math.max(newLimit, originalLimit);
+            // 系统内存压力低，激进增加限制
+            const newLimit = Math.floor(this.systemTotalMemoryMB * 0.9); // 最多使用90%系统内存
+            this.maxHeapUsage = Math.max(newLimit, Math.floor(originalLimit * 1.5)); // 最多增加50%
+            console.log(`🚀 内存压力低(${Math.round(systemUsagePercent * 100)}%)，激进增加内存限制到${this.maxHeapUsage}MB`);
 
         } else if (systemUsagePercent > this.adaptiveThresholds.highMemory) {
             // 系统内存压力高，需要收紧限制
