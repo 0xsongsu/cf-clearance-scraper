@@ -351,14 +351,14 @@ async function handleClearanceRequest(req, res, data) {
     global.activeRequestCount--
     clearTimeout(requestTimeout)
 
-    // 调试日志：显示请求完成后的并发状态
-    const completionLimit = getCurrentConcurrentLimit();
-    const requestDuration = Date.now() - startTime;
-    console.log(`✅ 请求完成: ${global.activeRequestCount}/${completionLimit} (耗时: ${requestDuration}ms, 结果: ${result.code})`);
-    
     // 更新监控数据 - 先获取请求信息，再删除
     const request = global.monitoringData.activeRequests.get(requestId)
     const requestStartTime = request?.startTime
+
+    // 调试日志：显示请求完成后的并发状态
+    const completionLimit = getCurrentConcurrentLimit();
+    const requestDuration = requestStartTime ? (Date.now() - requestStartTime.getTime()) : 0;
+    console.log(`✅ 请求完成: ${global.activeRequestCount}/${completionLimit} (耗时: ${requestDuration}ms, 结果: ${result.code})`);
     
     if (request) {
         global.monitoringData.activeRequestsByService.cloudflare--;
