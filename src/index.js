@@ -14,7 +14,8 @@ const { parseProxy } = require('./utils/proxyParser')
 
 // 请求计数器（替代浏览器实例计数）
 global.activeRequestCount = 0
-global.maxConcurrentRequests = Number(process.env.MAX_CONCURRENT_REQUESTS) || 60
+// 注意：maxConcurrentRequests 现在由 capacityManager 智能管理
+global.maxConcurrentRequests = Number(process.env.MAX_CONCURRENT_REQUESTS) || 60 // 初始值，会被智能系统覆盖
 global.timeOut = Number(process.env.TIMEOUT || process.env.timeOut || 300000) // 兼容旧格式
 global.memoryCleanupInterval = Number(process.env.MEMORY_CLEANUP_INTERVAL || process.env.memoryCleanupInterval) || 300000
 global.maxMemoryUsage = Number(process.env.MAX_MEMORY_USAGE || process.env.maxMemoryUsage) || 512 // MB
@@ -75,6 +76,16 @@ const solveTurnstileMin = require('../captcha-solvers/turnstile/endpoints/solveT
 const solveTurnstileMax = require('../captcha-solvers/turnstile/endpoints/solveTurnstile.max')
 const wafSession = require('../captcha-solvers/turnstile/endpoints/wafSession')
 const getCfClearance = require('../captcha-solvers/turnstile/endpoints/cfcookieService')
+
+// 获取当前实际的并发限制（优先使用智能系统的值）
+function getCurrentConcurrentLimit() {
+    // 如果智能容量管理器已启动，使用其计算的值
+    if (capacityManager && capacityManager.maxConcurrentRequests) {
+        return capacityManager.maxConcurrentRequests;
+    }
+    // 否则使用全局设置的值
+    return global.maxConcurrentRequests;
+}
 
 // 统一验证码处理接口 - 根路径
 app.post('/', async (req, res) => {
@@ -209,13 +220,22 @@ async function handleClearanceRequest(req, res, data) {
         return res.status(401).json({ code: 401, message: 'Unauthorized: Invalid auth token' })
     }
 
-    // 检查并发请求数
-    if (global.activeRequestCount >= global.maxConcurrentRequests) {
-        return res.status(429).json({ code: 429, message: 'Too many concurrent requests' })
+    // 检查并发请求数 - 使用智能系统的实际限制
+    const currentLimit = getCurrentConcurrentLimit();
+    if (global.activeRequestCount >= currentLimit) {
+        console.log(`🚫 并发限制: ${global.activeRequestCount}/${currentLimit} (智能系统: ${capacityManager?.maxConcurrentRequests || 'N/A'})`);
+        return res.status(429).json({
+            code: 429,
+            message: `Too many concurrent requests (${global.activeRequestCount}/${currentLimit})`
+        })
     }
 
     // 增加活跃请求计数
     global.activeRequestCount++
+
+    // 调试日志：显示当前并发状态
+    const currentLimit = getCurrentConcurrentLimit();
+    console.log(`📊 请求开始: ${global.activeRequestCount}/${currentLimit} (模式: ${data.mode}, URL: ${data.url})`);
     
     // 更新监控数据
     global.monitoringData.totalRequests++
@@ -331,6 +351,11 @@ async function handleClearanceRequest(req, res, data) {
 
     global.activeRequestCount--
     clearTimeout(requestTimeout)
+
+    // 调试日志：显示请求完成后的并发状态
+    const currentLimit = getCurrentConcurrentLimit();
+    const requestDuration = Date.now() - startTime;
+    console.log(`✅ 请求完成: ${global.activeRequestCount}/${currentLimit} (耗时: ${requestDuration}ms, 结果: ${result.code})`);
     
     // 更新监控数据 - 先获取请求信息，再删除
     const request = global.monitoringData.activeRequests.get(requestId)
@@ -403,6 +428,10 @@ app.get('/api/monitor', (_, res) => {
     try {
         // 计算活跃请求数
         const activeRequestCount = global.monitoringData.activeRequests.size
+
+        // 获取实际的并发限制
+        const actualConcurrentLimit = getCurrentConcurrentLimit();
+        const configuredLimit = global.maxConcurrentRequests;
         
         // 计算成功率
         const totalCompleted = global.monitoringData.successfulRequests + global.monitoringData.failedRequests
@@ -440,7 +469,14 @@ app.get('/api/monitor', (_, res) => {
                 active: activeRequestCount,
                 successful: global.monitoringData.successfulRequests,
                 failed: global.monitoringData.failedRequests,
-                successRate: `${successRate}%`
+                successRate: `${successRate}%`,
+                concurrency: {
+                    current: global.activeRequestCount,
+                    limit: actualConcurrentLimit,
+                    configured: configuredLimit,
+                    utilization: `${Math.round((global.activeRequestCount / actualConcurrentLimit) * 100)}%`,
+                    source: capacityManager?.maxConcurrentRequests ? 'smart' : 'configured'
+                }
             },
             activeRequestsByService: global.monitoringData.activeRequestsByService,
             instances: {
