@@ -454,6 +454,11 @@ app.get('/api/monitor', (_, res) => {
         const maxContexts = capacityManager.contextPoolSize || (global.contextPool ? global.contextPool.maxSize : 20);
         const contextPoolStatus = global.contextPool ? global.contextPool.getPoolStatus() : null;
 
+        // 计算平均验证时长（近100个请求）
+        const recentRequests = global.monitoringData.requestHistory.slice(0, 100);
+        const avgVerificationTime = recentRequests.length > 0 ?
+            (recentRequests.reduce((sum, req) => sum + (req.duration || 0), 0) / recentRequests.length).toFixed(0) : 0;
+
         // 构建监控数据
         const monitorData = {
             status: 'running',
@@ -468,7 +473,8 @@ app.get('/api/monitor', (_, res) => {
                 active: activeRequestCount,
                 successful: global.monitoringData.successfulRequests,
                 failed: global.monitoringData.failedRequests,
-                successRate: `${successRate}%`,
+                successRate: successRate,
+                avgVerificationTime: avgVerificationTime,
                 concurrency: {
                     current: global.activeRequestCount,
                     limit: actualConcurrentLimit,
@@ -817,7 +823,7 @@ app.get('/api/performance', (_, res) => {
                 successful: global.monitoringData.successfulRequests,
                 failed: global.monitoringData.failedRequests,
                 successRate: global.monitoringData.totalRequests > 0 ?
-                    ((global.monitoringData.successfulRequests / global.monitoringData.totalRequests) * 100).toFixed(2) + '%' : '0%'
+                    ((global.monitoringData.successfulRequests / global.monitoringData.totalRequests) * 100).toFixed(2) : '0'
             },
             uptime: {
                 startTime: global.monitoringData.startTime,

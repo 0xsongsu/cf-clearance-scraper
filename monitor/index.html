@@ -57,8 +57,8 @@
                         <span class="metric-value" id="avgLoad">0.0</span>
                     </div>
                     <div class="metric-item">
-                        <span class="metric-label">总容量</span>
-                        <span class="metric-value" id="totalCapacity">100</span>
+                        <span class="metric-label">平均验证时长</span>
+                        <span class="metric-value" id="avgVerificationTime">0ms</span>
                     </div>
                 </div>
                 <div class="chart-container load-chart-container">
@@ -734,27 +734,26 @@
         // 更新负载指标
         function updateLoadMetrics(data) {
             const currentActive = data.requests.active;
-            // 优先使用智能容量管理器的值，否则使用instances.total
-            const totalCapacity = data.performance?.capacity?.limits?.contextPoolSize || data.instances.total;
-            
+            const avgVerificationTime = data.requests.avgVerificationTime || 0;
+
             // 更新峰值并发
             peakConcurrent = Math.max(peakConcurrent, currentActive);
-            
+
             // 记录负载历史
             loadHistory.push(currentActive);
             if (loadHistory.length > 60) {
                 loadHistory.shift();
             }
-            
+
             // 计算平均负载
-            const avgLoad = loadHistory.length > 0 ? 
+            const avgLoad = loadHistory.length > 0 ?
                 loadHistory.reduce((sum, val) => sum + val, 0) / loadHistory.length : 0;
-            
+
             // 更新汇总指标
             document.getElementById('currentActive').textContent = currentActive;
             document.getElementById('peakConcurrent').textContent = peakConcurrent;
             document.getElementById('avgLoad').textContent = avgLoad.toFixed(1);
-            document.getElementById('totalCapacity').textContent = totalCapacity;
+            document.getElementById('avgVerificationTime').textContent = avgVerificationTime + 'ms';
         }
         
         // 更新图表
