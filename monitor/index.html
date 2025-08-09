@@ -193,30 +193,6 @@
                         </div>
                         <div style="color: #7f8c8d; font-size: 0.75rem; margin-top: 3px;">Turnstile 解决</div>
                     </div>
-                    <div style="padding: 15px; background: rgba(255, 140, 0, 0.1); border-radius: 8px; text-align: center; border: 2px solid rgba(255, 140, 0, 0.2);">
-                        <div style="margin-bottom: 10px;">
-                            <img src="hcaptcha-logo.png" alt="hCaptcha" style="width: 32px; height: 32px;">
-                        </div>
-                        <div style="font-weight: bold; color: #ff8c00; margin-bottom: 5px; font-size: 0.9rem;">hCaptcha</div>
-                        <div style="color: #27ae60; font-size: 0.8rem; font-weight: 600;">
-                            <span class="status-indicator status-running" style="margin-right: 4px;"></span>
-                            运行中
-                        </div>
-                        <div style="color: #7f8c8d; font-size: 0.75rem; margin-top: 3px;">AI 智能解决</div>
-                    </div>
-                    <!-- 第二排 -->
-                    <div style="padding: 15px; background: rgba(52, 120, 191, 0.1); border-radius: 8px; text-align: center; border: 2px solid rgba(52, 120, 191, 0.2);">
-                        <div style="margin-bottom: 10px;">
-                            <img src="https://www.gstatic.com/images/icons/material/product/2x/recaptcha_48dp.png" alt="reCAPTCHA" style="width: 32px; height: 32px;">
-                        </div>
-                        <div style="font-weight: bold; color: #3478bf; margin-bottom: 5px; font-size: 0.9rem;">reCAPTCHA</div>
-                        <div style="color: #27ae60; font-size: 0.8rem; font-weight: 600;">
-                            <span class="status-indicator status-running" style="margin-right: 4px;"></span>
-                            运行中
-                        </div>
-                        <div style="color: #7f8c8d; font-size: 0.75rem; margin-top: 3px;">v2/v3 解决</div>
-                    </div>
-                    <div></div> <!-- 空占位元素保持网格布局 -->
                 </div>
             `;
         }
@@ -284,21 +260,11 @@
                 </div>
                 <div style="margin-top: 15px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 15px;">
                     <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #34495e;">服务实例分布</h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
                         <div style="padding: 8px; background: rgba(28, 168, 221, 0.1); border-radius: 4px; text-align: center; font-size: 0.75rem;">
                             <div style="font-weight: bold; color: #1ca8dd; margin-bottom: 3px;">Cloudflare</div>
                             <div style="color: #7f8c8d;">实例: ${data.activeRequestsByService?.cloudflare || 0}</div>
                             <div style="color: #7f8c8d; font-size: 0.65rem;">Turnstile</div>
-                        </div>
-                        <div style="padding: 8px; background: rgba(255, 140, 0, 0.1); border-radius: 4px; text-align: center; font-size: 0.75rem;">
-                            <div style="font-weight: bold; color: #ff8c00; margin-bottom: 3px;">hCaptcha</div>
-                            <div style="color: #7f8c8d;">实例: ${data.activeRequestsByService?.hcaptcha || 0}</div>
-                            <div style="color: #7f8c8d; font-size: 0.65rem;">AI解决</div>
-                        </div>
-                        <div style="padding: 8px; background: rgba(52, 120, 191, 0.1); border-radius: 4px; text-align: center; font-size: 0.75rem;">
-                            <div style="font-weight: bold; color: #3478bf; margin-bottom: 3px;">reCAPTCHA</div>
-                            <div style="color: #7f8c8d;">实例: ${data.activeRequestsByService?.recaptcha || 0}</div>
-                            <div style="color: #7f8c8d; font-size: 0.65rem;">v2/v3</div>
                         </div>
                     </div>
                 </div>
@@ -619,18 +585,8 @@
                                 : formatDuration(req.responseTime);
                             
                             // 确定服务类型
-                            let serviceType = '';
-                            let serviceColor = '';
-                            if (req.mode === 'hcaptcha' || (req.url && req.url.includes('hcaptcha'))) {
-                                serviceType = 'hCaptcha';
-                                serviceColor = '#ff8c00';
-                            } else if (req.mode === 'recaptchav2' || req.mode === 'recaptchav3' || req.mode === 'recaptcha' || (req.url && req.url.includes('recaptcha'))) {
-                                serviceType = 'reCAPTCHA';
-                                serviceColor = '#3478bf';
-                            } else {
-                                serviceType = 'Cloudflare';
-                                serviceColor = '#1ca8dd';
-                            }
+                            let serviceType = 'Cloudflare';
+                            let serviceColor = '#1ca8dd';
                             
                             return `
                                 <tr class="${req.isActive ? 'active-request' : ''}" style="${req.isActive ? 'background-color: rgba(255, 193, 7, 0.1);' : ''}">

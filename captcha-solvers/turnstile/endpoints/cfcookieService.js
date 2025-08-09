@@ -1,8 +1,9 @@
 /**
  * CF Cookie Service - 专门提取 cf_clearance cookie
  * 使用上下文池优化版本，兼容 puppeteer-real-browser
+ * 支持返回完整的 headers 和 cookies 信息
  */
-async function getCfClearance({ url, proxy }) {
+async function getCfClearance({ url, proxy, mode }) {
   return new Promise(async (resolve, reject) => {
     if (!url) return reject("Missing url parameter");
     
@@ -96,6 +97,52 @@ async function getCfClearance({ url, proxy }) {
             console.log('✅ 成功获取 cf_clearance cookie');
             isResolved = true;
             clearTimeout(timeoutHandler);
+            
+            // 如果是 cf5s 模式，返回完整信息
+            if (mode === 'cf5s') {
+              // 获取所有cookies
+              const allCookies = await page.cookies();
+              
+              // 获取User-Agent和其他headers
+              const userAgent = await page.evaluate(() => navigator.userAgent);
+              
+              const fullResponse = {
+                code: 200,
+                cf_clearance: cfClearanceCookie.value,
+                headers: {
+                  "User-Agent": userAgent,
+                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                  "Accept-Language": "en-US,en;q=0.9",
+                  "Accept-Encoding": "gzip, deflate, br",
+                  "DNT": "1",
+                  "Connection": "keep-alive",
+                  "Upgrade-Insecure-Requests": "1",
+                  "Sec-Fetch-Dest": "document",
+                  "Sec-Fetch-Mode": "navigate",
+                  "Sec-Fetch-Site": "none",
+                  "Sec-Fetch-User": "?1",
+                  "Cache-Control": "max-age=0"
+                },
+                cookies: allCookies.map(cookie => ({
+                  name: cookie.name,
+                  value: cookie.value,
+                  domain: cookie.domain,
+                  path: cookie.path,
+                  expires: cookie.expires,
+                  httpOnly: cookie.httpOnly,
+                  secure: cookie.secure,
+                  sameSite: cookie.sameSite
+                })),
+                url: url,
+                timestamp: new Date().toISOString()
+              };
+              
+              await cleanup();
+              resolve(fullResponse);
+              return;
+            }
+            
+            // 兼容旧模式，只返回 cf_clearance 值
             await cleanup();
             resolve(cfClearanceCookie.value);
             return;

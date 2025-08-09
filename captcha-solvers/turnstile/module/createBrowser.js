@@ -49,7 +49,7 @@ async function createBrowser(options = {}) {
                     try {
                         const context = await global.browser.createBrowserContext({
                             // 优化上下文设置，减少资源占用
-                            ignoreHTTPSErrors: true,
+                            ignoreHTTPSErrors: true
                         });
                         
                         this.used++;
@@ -121,7 +121,7 @@ async function createBrowser(options = {}) {
                         // 创建新的上下文补充池子
                         if (this.available.length < Math.floor(this.maxSize / 2)) {
                             const newContext = await global.browser.createBrowserContext({
-                                ignoreHTTPSErrors: true,
+                                ignoreHTTPSErrors: true
                             });
                             this.contextUsage.set(newContext, 0);
                             this.available.push(newContext);
@@ -171,8 +171,8 @@ async function createBrowser(options = {}) {
 
         console.log('Launching the browser...')
 
-        const defaultWidth = 520
-        const defaultHeight = 240
+        const defaultWidth = 600
+        const defaultHeight = 520
 
         const width = options.width || defaultWidth
         const height = options.height || defaultHeight
@@ -188,7 +188,15 @@ async function createBrowser(options = {}) {
             headless: false,
             turnstile: true,
             executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            connectOption: { defaultViewport: null },
+            args: [
+                `--window-size=${width},${height}`,
+                '--window-position=0,0',
+                '--no-default-browser-check',
+                '--disable-restore-session-state'
+            ],
+            connectOption: { 
+                defaultViewport: null  // 不设置视口，让窗口大小生效
+            },
             disableXvfb: true
         }).catch(e => {
             console.error("Browser connection error:", e.message)

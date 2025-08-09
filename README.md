@@ -1,6 +1,6 @@
 # CF Clearance Scraper
 
-本地版本的 Cloudflare 保护绕过工具，支持 Turnstile 令牌生成、WAF 会话创建以及 hCaptcha AI 自动解决。
+本地版本的 Cloudflare 保护绕过工具，支持 Turnstile 令牌生成和 WAF 会话创建。
 
 ## 📸 项目展示
 
@@ -15,7 +15,7 @@
 
 | 版本 | 发布时间 | 主要更新 |
 |------|----------|----------|
-| **v1.0.3** | 2025-06 | ✨ 新增 hCaptcha 本地AI打码功能<br/>🔑 支持多个 Gemini API 密钥轮换使用<br/>⚡ 优化内存管理和系统性能监控<br/>📊 增强实时监控面板<br/>🚀 完善一键部署脚本，支持Python环境自动配置<br/>🛠️ 重构文档结构，提升用户体验 |
+| **v1.0.3** | 2025-06 | ⚡ 优化内存管理和系统性能监控<br/>📊 增强实时监控面板<br/>🚀 完善一键部署脚本<br/>🛠️ 重构文档结构，提升用户体验 |
 | **v1.0.2** | 2025-05 | 🔧 优化 Turnstile 解决算法<br/>📈 改进监控系统稳定性<br/>🐛 修复内存泄漏问题 |
 | **v1.0.1** | 2025-04 | 🎯 初始版本发布<br/>✅ 基础 Cloudflare 绕过功能<br/>📊 实时监控面板 |
 
@@ -23,7 +23,6 @@
 
 本项目基于以下优秀开源项目构建：
 
-- [QIN2DIM/hcaptcha-challenger](https://github.com/QIN2DIM/hcaptcha-challenger) - hCaptcha AI解决方案
 - [ZFC-Digital/cf-clearance-scraper](https://github.com/ZFC-Digital/cf-clearance-scraper) - Cloudflare绕过基础
 
 ## 支持功能
@@ -31,20 +30,36 @@
 | 功能类型 | 支持状态 | 说明 |
 |---------|---------|------|
 | **Cloudflare Turnstile** | ✅ | 支持轻量级和完整页面模式 |
-| **hCaptcha 自动解决** | ✅ | 基于 Google Gemini AI 模型 |
-| **reCAPTCHA v2** | ✅ | 支持音频和图像挑战解决 |
-| **reCAPTCHA v3** | ✅ | 支持网络监听和分数优化 |
 | **实时监控面板** | ✅ | 服务状态和性能指标监控 |
 | **代理支持** | ✅ | HTTP/HTTPS 代理配置 |
 
-## 文档指南
+## 快速开始
 
-| 文档 | 功能说明 | 适用场景 |
-|------|---------|----------|
-| [📦 部署文档](docs/INSTALLATION.md) | 一键部署和手动安装步骤 | 初次使用 |
-| [🔧 API文档](docs/API.md) | 完整的接口使用说明和示例 | 开发集成 |
-| [⚙️ 配置指南](docs/CONFIGURATION.md) | 统一配置系统、参数调优和监控 | 环境配置 |
-| [🛠️ 故障排除](docs/TROUBLESHOOTING.md) | 常见问题诊断和解决方案 | 问题解决 |
+### 安装
+```bash
+npm install
+```
+
+### 启动服务
+```bash
+npm start
+```
+
+### API 使用
+```javascript
+// 获取 Cloudflare Turnstile token
+fetch('http://localhost:3000/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        type: "cftoken",
+        websiteUrl: "https://example.com",
+        websiteKey: "your-site-key"
+    })
+})
+```
+
+详细文档：[🔧 API文档](docs/API.md) | [⚙️ 配置指南](docs/CONFIGURATION.md)
 
 ## 免责声明
 

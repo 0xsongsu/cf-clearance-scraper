@@ -10,7 +10,7 @@ const schema = {
         // 新的参数格式
         "type": {
             "type": "string",
-            "enum": ["cftoken", "cfcookie", "recaptchav2", "recaptchav3"]
+            "enum": ["cftoken", "cfcookie", "cf5s"]
         },
         "websiteUrl": {
             "type": "string",
@@ -22,7 +22,7 @@ const schema = {
         // 兼容旧的参数格式
         "mode": {
             "type": "string",
-            "enum": ["source", "turnstile-min", "turnstile-max", "waf-session", "cfcookie", "recaptchav2", "recaptchav3"]
+            "enum": ["source", "turnstile-min", "turnstile-max", "waf-session", "cfcookie", "cf5s"]
         },
         "url": {
             "type": "string",
@@ -66,24 +66,17 @@ const schema = {
             }
         },
         {
-            // 新格式验证 - cfcookie
+            // 新格式验证 - cfcookie (兼容旧版)
             "required": ["type", "websiteUrl"],
             "properties": {
                 "type": { "const": "cfcookie" }
             }
         },
         {
-            // 新格式验证 - recaptchav2
-            "required": ["type", "websiteUrl", "websiteKey"],
+            // 新格式验证 - cf5s (5秒盾)
+            "required": ["type", "websiteUrl"],
             "properties": {
-                "type": { "const": "recaptchav2" }
-            }
-        },
-        {
-            // 新格式验证 - recaptchav3
-            "required": ["type", "websiteUrl", "websiteKey"],
-            "properties": {
-                "type": { "const": "recaptchav3" }
+                "type": { "const": "cf5s" }
             }
         },
         {

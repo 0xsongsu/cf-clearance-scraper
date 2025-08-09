@@ -3,14 +3,9 @@
   "version": "2.1.3",
   "main": "index.js",
   "scripts": {
-    "start": "node start.js --maxMemoryUsage=4096 --maxConcurrentRequests=60 --contextPoolSize=20",
-    "start:dev": "node start.js --browserLimit=10 --maxMemoryUsage=2048 --maxConcurrentRequests=20 --contextPoolSize=10",
-    "start:prod": "node start.js --browserLimit=25 --maxMemoryUsage=6144 --maxConcurrentRequests=80 --contextPoolSize=25",
-    "start:light": "node start.js --browserLimit=5 --maxMemoryUsage=1024 --maxConcurrentRequests=10 --contextPoolSize=5",
+    "start": "node start.js",
     "test": "node --experimental-vm-modules ./node_modules/.bin/jest --detectOpenHandles --verbose",
     "test:quick": "node tests/quick_test.js",
-    "test:deployment": "node tests/test_hcaptcha_deployment.js",
-    "test:check": "./tests/deployment_check.sh",
     "monitor": "open http://localhost:3000/monitor"
   },
   "jest": {
@@ -32,7 +27,7 @@
   ],
   "author": "zfcsoftware",
   "license": "ISC",
-  "description": "本地版本的 Cloudflare 保护绕过工具，支持页面源码获取、Turnstile令牌生成和WAF会话创建。无需Docker，直接本地部署。",
+  "description": "Cloudflare Turnstile and WAF bypass tool for local deployment",
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",

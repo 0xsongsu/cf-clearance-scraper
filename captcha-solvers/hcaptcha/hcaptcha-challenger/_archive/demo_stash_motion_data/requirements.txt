@@ -1,4 +1,0 @@
-sanic~=23.6.0
-loguru
-selenium
-webdriver_manager

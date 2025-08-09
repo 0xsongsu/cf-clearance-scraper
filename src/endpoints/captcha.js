@@ -6,7 +6,6 @@
 const path = require('path');
 
 // 导入各种验证码解决器
-const { solveHcaptcha } = require('../../captcha-solvers/hcaptcha/endpoint');
 const solveTurnstileMin = require('../../captcha-solvers/turnstile/endpoints/solveTurnstile.min');
 const solveTurnstileMax = require('../../captcha-solvers/turnstile/endpoints/solveTurnstile.max');
 
@@ -28,9 +27,6 @@ async function solveCaptcha(req, res) {
         }
 
         switch (type.toLowerCase()) {
-            case 'hcaptcha':
-                return await solveHcaptcha(req, res);
-            
             case 'turnstile':
             case 'cftoken':
                 // 根据需要选择 min 或 max 版本
@@ -44,7 +40,7 @@ async function solveCaptcha(req, res) {
             default:
                 return res.status(400).json({
                     code: 400,
-                    message: `Unsupported captcha type: ${type}. Supported types: hcaptcha, turnstile, cftoken`,
+                    message: `Unsupported captcha type: ${type}. Supported types: turnstile, cftoken`,
                     token: null
                 });
         }
@@ -118,7 +114,6 @@ async function handleTurnstileMax(req, res) {
 
 module.exports = { 
     solveCaptcha,
-    solveHcaptcha,
     handleTurnstileMin,
     handleTurnstileMax
 };
