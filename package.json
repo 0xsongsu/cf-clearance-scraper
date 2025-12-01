@@ -6,7 +6,9 @@
     "start": "node start.js",
     "test": "node --experimental-vm-modules ./node_modules/.bin/jest --detectOpenHandles --verbose",
     "test:quick": "node tests/quick_test.js",
-    "monitor": "open http://localhost:3000/monitor"
+    "monitor": "open http://localhost:3000/monitor",
+    "stress:cftoken": "node scripts/stress-cftoken.js --url http://localhost:3001/ --sites ./sites.json --requests 200 --concurrency 50",
+    "stress:cftoken:verify": "node scripts/stress-cftoken-verify.js --service http://localhost:3001/ --requests 500 --concurrency 50"
   },
   "jest": {
     "testMatch": [
@@ -34,13 +36,21 @@
     "@xenova/transformers": "^2.17.2",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "axios": "^1.10.0",
+    "axios": "^1.11.0",
     "body-parser": "^1.20.3",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "ethers": "^6.15.0",
     "express": "^4.21.0",
+    "got": "^14.4.8",
+    "hpagent": "^1.2.0",
+    "https-proxy-agent": "^7.0.6",
     "jest": "^29.7.0",
     "puppeteer-real-browser": "^1.4.0",
-    "supertest": "^7.0.0"
+    "supertest": "^7.0.0",
+    "uuid": "^11.1.0"
   }
 }

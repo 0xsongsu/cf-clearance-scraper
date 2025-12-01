@@ -10,7 +10,7 @@ const schema = {
         // 新的参数格式
         "type": {
             "type": "string",
-            "enum": ["cftoken", "cfcookie", "cf5s"]
+            "enum": ["cftoken", "cfcookie", "cf5s", "cookies"]
         },
         "websiteUrl": {
             "type": "string",
@@ -22,7 +22,7 @@ const schema = {
         // 兼容旧的参数格式
         "mode": {
             "type": "string",
-            "enum": ["source", "turnstile-min", "turnstile-max", "waf-session", "cfcookie", "cf5s"]
+            "enum": ["source", "turnstile-min", "turnstile-max", "waf-session", "cfcookie", "cf5s", "cookies"]
         },
         "url": {
             "type": "string",
@@ -55,6 +55,12 @@ const schema = {
         },
         "action": {
             "type": "string"
+        },
+        // cookies 模式特有参数
+        "waitTime": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 60000
         }
     },
     "anyOf": [
@@ -77,6 +83,13 @@ const schema = {
             "required": ["type", "websiteUrl"],
             "properties": {
                 "type": { "const": "cf5s" }
+            }
+        },
+        {
+            // 新格式验证 - cookies (获取所有cookies)
+            "required": ["type", "websiteUrl"],
+            "properties": {
+                "type": { "const": "cookies" }
             }
         },
         {

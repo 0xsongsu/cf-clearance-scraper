@@ -16,7 +16,7 @@ const defaultConfig = {
     browserLimit: Number(process.env.BROWSER_LIMIT) || 25,
     timeOut: Number(process.env.TIMEOUT) || 60000,
     memoryCleanupInterval: Number(process.env.MEMORY_CLEANUP_INTERVAL) || 300000,
-    maxMemoryUsage: Number(process.env.MAX_MEMORY_USAGE) || 4096,
+    maxMemoryUsage: Number(process.env.MAX_MEMORY_USAGE) || 8192, // 8GB 堆内存
     maxConcurrentRequests: Number(process.env.MAX_CONCURRENT_REQUESTS) || 60,
     contextPoolSize: Number(process.env.CONTEXT_POOL_SIZE) || 20
 };
@@ -52,7 +52,7 @@ CF Clearance Scraper 启动脚本
   --browserLimit=25              最大并发浏览器数 (默认: 25)
   --timeOut=60000               请求超时时间(毫秒) (默认: 60000)
   --memoryCleanupInterval=300000 内存清理间隔(毫秒) (默认: 300000)
-  --maxMemoryUsage=512          最大内存使用(MB) (默认: 512)
+  --maxMemoryUsage=8192         最大堆内存(MB) (默认: 8192)
   --maxConcurrentRequests=60    最大并发请求数 (默认: 60)
   --contextPoolSize=20          浏览器上下文池大小 (默认: 20)
   --authToken=your_token        API认证令牌 (可选)

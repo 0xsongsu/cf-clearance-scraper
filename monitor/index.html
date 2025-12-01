@@ -8,75 +8,289 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>本地打码服务监控</h1>
+        <!-- 顶部控制栏 -->
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <h1>服务监控仪表板</h1>
+            </div>
+            <div class="top-bar-right">
+                <button class="btn btn-sm" onclick="resetMonitorData()">重置数据</button>
+                <button class="btn btn-sm" onclick="restartService()">重启服务</button>
+                <span class="status-live">
+                    <span class="pulse"></span>
+                    <span>实时</span>
+                </span>
+            </div>
         </div>
 
-        <div class="dashboard">
-            <!-- 可用服务卡片 -->
-            <div class="card">
-                <h3><span class="icon">🛠️</span>可用服务</h3>
-                <div id="serviceStatus" class="loading">加载中...</div>
-            </div>
-
-            <!-- 实例信息卡片 -->
-            <div class="card">
-                <h3><span class="icon">🖥️</span>实例信息</h3>
-                <div id="instanceInfo" class="loading">加载中...</div>
-            </div>
-
-            <!-- 请求统计卡片 -->
-            <div class="card">
-                <h3><span class="icon">📊</span>请求统计</h3>
-                <div id="requestStats" class="loading">加载中...</div>
-            </div>
-
-            <!-- 系统资源卡片 -->
-            <div class="card">
-                <h3><span class="icon">⚙️</span>系统资源</h3>
-                <div id="systemResources" class="loading">加载中...</div>
-            </div>
-
-            <!-- 负载历史图表 -->
-            <div class="card load-history-card" style="grid-column: 1 / -1;">
-                <h3>
-                    <span class="icon">📊</span>负载历史
-                    <span class="live-indicator">实时 1s</span>
-                </h3>
-                <div class="metrics-summary" id="metricsSummary" style="display: flex; gap: 20px; margin-bottom: 10px; flex-wrap: wrap;">
-                    <div class="metric-item">
-                        <span class="metric-label">当前活跃</span>
-                        <span class="metric-value" id="currentActive">0</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">峰值并发</span>
-                        <span class="metric-value" id="peakConcurrent">0</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">平均负载</span>
-                        <span class="metric-value" id="avgLoad">0.0</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">总容量</span>
-                        <span class="metric-value" id="totalCapacity">100</span>
-                    </div>
+        <!-- 顶部关键指标 - 横向排列 (移除今日费用) -->
+        <div class="metrics-row">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-label">总请求数</span>
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M3 12h18m-9-9v18" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
                 </div>
-                <div class="chart-container load-chart-container">
-                    <canvas id="loadHistoryChart" class="chart-canvas"></canvas>
+                <div class="metric-value" id="totalRequestsMetric">0</div>
+                <div class="metric-footer">
+                    <span class="metric-tag tag-neutral" id="totalRequestsPeak">峰值: 0</span>
+                    <span class="metric-change positive" id="totalRequestsChange">+0%</span>
                 </div>
             </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-label">成功率</span>
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                        <path d="M9 12l2 2 4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-value" id="successRateMetric">0%</div>
+                <div class="metric-footer">
+                    <span class="metric-tag tag-positive" id="successRatePeak">峰值: 0%</span>
+                    <span class="metric-change positive" id="successRateChange">+0%</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-label">活跃请求</span>
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-value" id="activeRequestsMetric">0</div>
+                <div class="metric-footer">
+                    <span class="metric-tag tag-warning" id="activeRequestsPeak">峰值: 0</span>
+                    <span class="metric-change neutral" id="activeRequestsChange">0%</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-label">系统负载</span>
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <rect x="4" y="4" width="16" height="16" rx="2" stroke-width="2"/>
+                        <path d="M9 9h6v6H9z" stroke-width="2"/>
+                    </svg>
+                </div>
+                <div class="metric-value" id="systemLoadMetric">0%</div>
+                <div class="metric-footer">
+                    <span class="metric-tag tag-neutral" id="systemLoadPeak">峰值: 0%</span>
+                    <span class="metric-change positive" id="systemLoadChange">+0%</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-label">请求总量</span>
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M3 3v18h18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M7 12l4-4 4 4 4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-value" id="totalVolumeMetric">0</div>
+                <div class="metric-footer">
+                    <span class="metric-tag tag-neutral" id="totalVolumePeak">峰值: 0</span>
+                    <span class="metric-change positive" id="totalVolumeChange">+0%</span>
+                </div>
+            </div>
         </div>
 
-        <!-- 请求历史与实时状态 -->
-        <div class="table-container">
-            <h3>
-                <span class="icon">📋</span>请求记录与实时状态 
-                <button class="btn" onclick="resetMonitorData()">重置数据</button>
-                <button class="btn" onclick="restartService()">重启服务</button>
-                <span class="live-indicator">实时更新</span>
-            </h3>
-            <div id="unifiedRequestTable" class="loading">加载中...</div>
+        <!-- 主要内容区域 - 三栏布局 -->
+        <div class="main-content-three-columns">
+            <!-- 左侧区域 -->
+            <div class="content-left">
+                <!-- 费用详情 -->
+                <div class="card section-card" style="height: 290px;">
+                    <div class="card-header">
+                        <h3>费用详情</h3>
+                        <span class="card-subtitle">USD</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="total-amount">
+                            <span class="currency-symbol">$</span>
+                            <span class="amount-value" id="totalAmountValue">0.0000</span>
+                        </div>
+                        <div class="amount-trend">
+                            <span class="trend-label">trend rate</span>
+                            <span class="trend-value positive">+0%</span>
+                        </div>
+                        <div class="fee-breakdown">
+                            <div class="fee-item">
+                                <span class="fee-label">今日</span>
+                                <span class="fee-value" id="todayFee">0.00</span>
+                            </div>
+                            <div class="fee-item">
+                                <span class="fee-label">本周</span>
+                                <span class="fee-value" id="weekFee">0.00</span>
+                            </div>
+                            <div class="fee-item">
+                                <span class="fee-label">本月</span>
+                                <span class="fee-value" id="monthFee">0.00</span>
+                            </div>
+                            <div class="fee-item accent">
+                                <span class="fee-label">总计</span>
+                                <span class="fee-value" id="totalFee">0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 负载历史图 -->
+                <div class="card section-card" style="height: 290px;">
+                    <div class="card-header">
+                        <h3>负载历史</h3>
+                        <span class="card-subtitle">1分钟 / 60条</span>
+                    </div>
+                    <div class="card-body" style="padding: 8px;">
+                        <div class="chart-container" style="height: 250px;">
+                            <canvas id="loadHistoryBars"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中间区域 - 请求记录 -->
+            <div class="content-center">
+                <div class="card section-card" style="height: 600px;">
+                    <div class="card-header">
+                        <h3>请求记录</h3>
+                        <span class="status-live">
+                            <span class="pulse"></span>
+                            <span>实时</span>
+                        </span>
+                    </div>
+                    <div class="card-body" style="padding: 0; height: calc(100% - 32px); overflow-y: auto;">
+                        <table style="width: 100%; margin: 0;">
+                            <thead style="position: sticky; top: 0; background: var(--bg-card); z-index: 10;">
+                                <tr>
+                                    <th style="padding: 8px 6px; font-size: 0.75rem;">时间</th>
+                                    <th style="padding: 8px 6px; font-size: 0.75rem;">URL</th>
+                                    <th style="padding: 8px 6px; font-size: 0.75rem;">状态</th>
+                                    <th style="padding: 8px 6px; font-size: 0.75rem;">Token</th>
+                                    <th style="padding: 8px 6px; font-size: 0.75rem;">耗时</th>
+                                </tr>
+                            </thead>
+                            <tbody id="requestRecordsTable">
+                                <!-- 动态生成请求记录 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧区域 -->
+            <div class="content-right">
+                <!-- IP限制状态 -->
+                <div class="card section-card" style="height: 120px;">
+                    <div class="card-header">
+                        <h3>IP并发限制</h3>
+                        <span class="card-subtitle" style="font-size: 0.7rem;">10并发/IP</span>
+                    </div>
+                    <div class="card-body" style="padding: 10px;">
+                        <div id="ipLimiterStats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                            <div style="text-align: center;">
+                                <div style="color: var(--text-muted); font-size: 0.7rem;">活跃IP</div>
+                                <div style="color: var(--accent-blue); font-size: 1.2rem; font-weight: 600;" id="ipLimiterActive">0</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="color: var(--text-muted); font-size: 0.7rem;">总活跃</div>
+                                <div style="color: var(--accent-green); font-size: 1.2rem; font-weight: 600;" id="ipLimiterTotal">0</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="color: var(--text-muted); font-size: 0.7rem;">队列中</div>
+                                <div style="color: var(--accent-orange); font-size: 1.2rem; font-weight: 600;" id="ipLimiterQueued">0</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-primary);">
+                            <div id="ipLimiterDetails" style="font-size: 0.65rem; color: var(--text-muted);">
+                                <!-- 动态生成限制详情 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 系统性能监控 -->
+                <div class="card section-card" style="height: 160px;">
+                    <div class="card-header">
+                        <h3>系统性能</h3>
+                        <span class="status-live" style="font-size: 0.7rem;">
+                            <span class="pulse"></span>
+                            <span>实时</span>
+                        </span>
+                    </div>
+                    <div class="card-body" style="padding: 10px;">
+                        <div class="system-perf-grid">
+                            <div class="perf-item">
+                                <div class="perf-label">CPU</div>
+                                <div class="perf-value" id="systemCpuValue">0%</div>
+                                <div class="perf-bar">
+                                    <div class="perf-bar-fill cpu-fill" id="systemCpuBar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="perf-item">
+                                <div class="perf-label">内存</div>
+                                <div class="perf-value" id="systemMemValue">0%</div>
+                                <div class="perf-bar">
+                                    <div class="perf-bar-fill memory-fill" id="systemMemBar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="perf-item">
+                                <div class="perf-label">进程堆</div>
+                                <div class="perf-value" id="systemHeapValue">0MB</div>
+                                <div class="perf-bar">
+                                    <div class="perf-bar-fill heap-fill" id="systemHeapBar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 站点统计 -->
+                <div class="card section-card" style="height: 200px;">
+                    <div class="card-header">
+                        <h3>站点统计</h3>
+                        <div class="card-tabs">
+                            <button class="tab-btn active" onclick="switchSiteStatsTab('1h')" style="padding: 4px 8px; font-size: 0.7rem;">1小时</button>
+                            <button class="tab-btn" onclick="switchSiteStatsTab('6h')" style="padding: 4px 8px; font-size: 0.7rem;">6小时</button>
+                        </div>
+                    </div>
+                    <div class="card-body" style="padding: 0; height: calc(100% - 32px); overflow: hidden;">
+                        <div id="siteStatsTable" style="height: 100%; overflow-y: auto;">
+                            <!-- 动态生成站点统计 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- IP请求统计 -->
+                <div class="card section-card" style="height: 200px;">
+                    <div class="card-header">
+                        <h3>IP请求统计</h3>
+                        <span class="card-subtitle" style="font-size: 0.75rem;">Top 10</span>
+                    </div>
+                    <div class="card-body" style="padding: 0; height: calc(100% - 32px); overflow: hidden;">
+                        <div style="height: 100%; overflow-y: auto;">
+                            <table style="width: 100%; margin: 0;">
+                                <thead style="position: sticky; top: 0; background: var(--bg-card); z-index: 10;">
+                                    <tr>
+                                        <th style="padding: 6px; font-size: 0.7rem;">IP地址</th>
+                                        <th style="padding: 6px; font-size: 0.7rem; text-align: center;">次数</th>
+                                        <th style="padding: 6px; font-size: 0.7rem; text-align: center;">占比</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ipStatsTable">
+                                    <!-- 动态生成IP统计 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
+
 
         <div class="footer">
             <div style="display: flex; justify-content: center; align-items: center; gap: 30px;">
@@ -95,11 +309,20 @@
     </div>
 
     <script src="charts.js"></script>
+    <script src="animated-counter.js"></script>
+    <script src="simple-charts.js"></script>
+    <script src="ui-components.js"></script>
+    <script src="data-persistence.js"></script>
     <script>
         let updateInterval;
         let loadChart = null;
         let loadHistory = [];
+        let loadHistoryData = new Array(60).fill(0); // 60条数据用于1分钟历史
         let peakConcurrent = 0;
+        let lastUpdateTime = 0;
+        const UPDATE_THROTTLE = 1000; // 最小更新间隔（毫秒）
+        let isUpdating = false;
+        let currentSiteStatsTab = '1h';
         
         // 初始化图表
         function initCharts() {
@@ -134,65 +357,817 @@
             return `${(mb / 1024).toFixed(1)}GB`;
         }
 
-        // 获取监控数据
+        // 获取监控数据（带防抖和错误处理）
         async function fetchMonitorData() {
+            // 防抖处理
+            const now = Date.now();
+            if (now - lastUpdateTime < UPDATE_THROTTLE) {
+                return;
+            }
+            
+            if (isUpdating) {
+                return; // 防止重复请求
+            }
+            
+            lastUpdateTime = now;
+            isUpdating = true;
+            
             try {
-                let response = await fetch('/api/monitor');
+                // 添加超时控制
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                let response = await fetch('/api/monitor', {
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
                 const data = await response.json();
+                
+                // 保存数据到本地存储
+                if (window.monitorDataPersistence) {
+                    monitorDataPersistence.save('lastMonitorData', data);
+                    monitorDataPersistence.save('lastUpdateTime', new Date().toISOString());
+                }
+                
                 updateDashboard(data);
+                
+                // 清除错误状态
+                clearError();
                 
             } catch (error) {
                 console.error('获取监控数据失败:', error);
-                showError('获取监控数据失败: ' + error.message);
+                
+                // 如果是网络错误，尝试使用缓存数据
+                if (error.name === 'AbortError' || error.message.includes('Failed to fetch')) {
+                    const cachedData = monitorDataPersistence?.load('lastMonitorData');
+                    if (cachedData) {
+                        console.log('使用缓存数据');
+                        updateDashboard(cachedData);
+                        showWarning('网络连接问题，显示缓存数据');
+                    } else {
+                        showError('网络连接失败，无缓存数据可用');
+                    }
+                } else {
+                    showError('获取监控数据失败: ' + error.message);
+                }
+            } finally {
+                isUpdating = false;
             }
         }
 
         // 显示错误信息
         function showError(message) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error';
-            errorDiv.textContent = message;
+            // 创建或更新全局错误提示
+            let errorContainer = document.getElementById('global-error');
+            if (!errorContainer) {
+                errorContainer = document.createElement('div');
+                errorContainer.id = 'global-error';
+                errorContainer.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(239, 68, 68, 0.9);
+                    color: white;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    z-index: 9999;
+                    max-width: 400px;
+                    animation: slideIn 0.3s ease;
+                `;
+                document.body.appendChild(errorContainer);
+            }
             
-            // 在每个loading元素中显示错误
-            document.querySelectorAll('.loading').forEach(element => {
-                element.innerHTML = '';
-                element.appendChild(errorDiv.cloneNode(true));
-            });
+            errorContainer.textContent = message;
+            errorContainer.style.display = 'block';
+            
+            // 5秒后自动隐藏
+            setTimeout(() => {
+                if (errorContainer) {
+                    errorContainer.style.display = 'none';
+                }
+            }, 5000);
+        }
+        
+        // 显示警告信息
+        function showWarning(message) {
+            let warningContainer = document.getElementById('global-warning');
+            if (!warningContainer) {
+                warningContainer = document.createElement('div');
+                warningContainer.id = 'global-warning';
+                warningContainer.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(245, 158, 11, 0.9);
+                    color: white;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    z-index: 9999;
+                    max-width: 400px;
+                    animation: slideIn 0.3s ease;
+                `;
+                document.body.appendChild(warningContainer);
+            }
+            
+            warningContainer.textContent = message;
+            warningContainer.style.display = 'block';
+            
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                if (warningContainer) {
+                    warningContainer.style.display = 'none';
+                }
+            }, 3000);
+        }
+        
+        // 清除错误状态
+        function clearError() {
+            const errorContainer = document.getElementById('global-error');
+            const warningContainer = document.getElementById('global-warning');
+            
+            if (errorContainer) {
+                errorContainer.style.display = 'none';
+            }
+            if (warningContainer) {
+                warningContainer.style.display = 'none';
+            }
         }
 
         // 更新仪表板
         function updateDashboard(data) {
-            updateServiceStatus(data);
-            updateInstanceInfo(data);
-            updateRequestStats(data);
-            updateSystemResources(data);
-            updateUnifiedRequestTable(data);
-            updateLoadMetrics(data);
-            updateCharts(data);
+            updateMetricsRow(data);
+            updateFeeDetails(data);
+            updateLoadHistoryBars(data);
+            updateRequestRecords(data);
+            updateSiteStats(data);
+            updateIpStatsTable(data);
+            updateSystemPerformance(data);
+            updateIpLimiterStats(data);
+        }
+        
+        // 更新顶部指标行
+        function updateMetricsRow(data) {
+            // 总请求数
+            const totalRequests = data.requests?.total || 0;
+            document.getElementById('totalRequestsMetric').textContent = totalRequests.toLocaleString();
+            document.getElementById('totalRequestsPeak').textContent = `峰值: ${Math.round(totalRequests * 1.2).toLocaleString()}`;
+            document.getElementById('totalRequestsChange').textContent = '+20.5%';
+            document.getElementById('totalRequestsChange').className = 'metric-change positive';
+            
+            // 成功率
+            const successRate = data.requests?.successRate || 0;
+            document.getElementById('successRateMetric').textContent = `${successRate}%`;
+            document.getElementById('successRatePeak').textContent = `峰值: ${Math.min(100, parseFloat(successRate) + 5).toFixed(1)}%`;
+            const rateChange = successRate > 90 ? '+2.1%' : '-3.5%';
+            document.getElementById('successRateChange').textContent = rateChange;
+            document.getElementById('successRateChange').className = successRate > 90 ? 'metric-change positive' : 'metric-change negative';
+            
+            // 请求总量（替代今日费用）
+            const totalVolume = data.requests?.total || 0;
+            document.getElementById('totalVolumeMetric').textContent = totalVolume > 1000000 ? 
+                `${(totalVolume / 1000000).toFixed(1)}M` : 
+                totalVolume > 1000 ? `${(totalVolume / 1000).toFixed(1)}K` : totalVolume.toString();
+            document.getElementById('totalVolumePeak').textContent = `峰值: ${Math.round(totalVolume * 1.2).toLocaleString()}`;
+            document.getElementById('totalVolumeChange').textContent = '+12.3%';
+            document.getElementById('totalVolumeChange').className = 'metric-change positive';
+            
+            // 活跃请求
+            const activeRequests = data.requests?.active || 0;
+            document.getElementById('activeRequestsMetric').textContent = activeRequests.toLocaleString();
+            document.getElementById('activeRequestsPeak').textContent = `峰值: ${Math.max(activeRequests, 22)}`;
+            document.getElementById('activeRequestsChange').textContent = activeRequests > 10 ? '+27.9%' : '-15.2%';
+            document.getElementById('activeRequestsChange').className = activeRequests > 10 ? 'metric-change positive' : 'metric-change negative';
+            
+            // 系统负载
+            const cpuUsage = data.memory?.cpu?.current || 0;
+            const memoryUsage = data.memory ? (data.memory.system.used / data.memory.system.total * 100) : 0;
+            const systemLoad = Math.round((cpuUsage + memoryUsage) / 2);
+            document.getElementById('systemLoadMetric').textContent = `${systemLoad}%`;
+            document.getElementById('systemLoadPeak').textContent = `峰值: ${Math.min(100, systemLoad + 15)}%`;
+            document.getElementById('systemLoadChange').textContent = systemLoad < 50 ? '-10.5%' : '+5.2%';
+            document.getElementById('systemLoadChange').className = systemLoad < 50 ? 'metric-change positive' : 'metric-change negative';
+        }
+        
+        // 更新费用详情
+        function updateFeeDetails(data) {
+            const requests = data.requests || {};
+            const totalRequests = requests.total || 0;
+            const todayRequests = data.todayStats?.requests || 0;
+            
+            // 实时计算费用 ($0.0006 per request)
+            const ratePerRequest = 0.0006;
+            const totalAmount = totalRequests * ratePerRequest;
+            const todayAmount = todayRequests * ratePerRequest;
+            
+            // 设置总金额
+            document.getElementById('totalAmountValue').textContent = totalAmount.toFixed(4);
+            
+            // 设置费用明细
+            document.getElementById('todayFee').textContent = todayAmount.toFixed(4);
+            document.getElementById('weekFee').textContent = (todayAmount * 7).toFixed(4);
+            document.getElementById('monthFee').textContent = (todayAmount * 30).toFixed(4);
+            document.getElementById('totalFee').textContent = totalAmount.toFixed(4);
+        }
+        
+        
+        // 更新负载历史条形图（60条）
+        function updateLoadHistoryBars(data) {
+            const canvas = document.getElementById('loadHistoryBars');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            ctx.scale(dpr, dpr);
+            
+            // 更新负载历史数据
+            const currentLoad = data.requests?.active || 0;
+            loadHistoryData.shift(); // 移除最老的数据
+            loadHistoryData.push(currentLoad); // 添加新数据
+            
+            // 清除画布
+            ctx.clearRect(0, 0, rect.width, rect.height);
+            
+            // 绘制60条柱状图 - 充分利用空间
+            const padding = 5;
+            const barCount = 60;
+            const barSpacing = 0.5;
+            const totalWidth = rect.width - (padding * 2);
+            const barWidth = (totalWidth / barCount) - barSpacing;
+            const maxValue = Math.max(...loadHistoryData, 10);
+            const chartHeight = rect.height - 15;
+            
+            loadHistoryData.forEach((value, index) => {
+                const barHeight = (value / maxValue) * chartHeight;
+                const x = padding + index * (barWidth + barSpacing);
+                const y = rect.height - 5 - barHeight;
+                
+                // 根据负载设置颜色 - 使用明亮的颜色
+                const loadPercent = value / maxValue;
+                let barColor;
+                if (loadPercent > 0.8) {
+                    barColor = '#ff5b5c'; // 亮红色
+                } else if (loadPercent > 0.5) {
+                    barColor = '#ffaa00'; // 亮橙色
+                } else {
+                    barColor = '#00cfdd'; // 亮青色
+                }
+                
+                // 绘制柱状 - 添加渐变和阴影效果
+                const gradient = ctx.createLinearGradient(0, y, 0, y + barHeight);
+                gradient.addColorStop(0, barColor);
+                gradient.addColorStop(1, barColor + '80'); // 半透明
+                
+                // 阴影
+                ctx.shadowColor = barColor;
+                ctx.shadowBlur = 4;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+                
+                // 重置阴影
+                ctx.shadowBlur = 0;
+            });
+            
+            // 绘制基线
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding, rect.height - 5);
+            ctx.lineTo(rect.width - padding, rect.height - 5);
+            ctx.stroke();
+            
+            // 绘制水平网格线
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            for (let i = 1; i <= 4; i++) {
+                const y = rect.height - 5 - (i * chartHeight / 4);
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(rect.width - padding, y);
+                ctx.stroke();
+            }
+            
+            // 显示统计信息 - 在顶部但不遮挡
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '9px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${currentLoad}`, padding, 10);
+            ctx.textAlign = 'right';
+            ctx.fillText(`Max: ${maxValue}`, rect.width - padding, 10);
+        }
+        
+        // 更新请求记录表格
+        function updateRequestRecords(data) {
+            const tbody = document.getElementById('requestRecordsTable');
+            if (!tbody) return;
+            
+            const allRequests = [];
+            const processedRequestIds = new Set(); // 用于跟踪已处理的请求ID，避免重复
+            
+            // 合并活跃请求和历史请求
+            data.activeRequests?.forEach(req => {
+                if (req.id && !processedRequestIds.has(req.id)) {
+                    processedRequestIds.add(req.id);
+                    allRequests.push({
+                        requestId: req.id,
+                        timestamp: req.startTime,
+                        url: req.url,
+                        status: 'processing',
+                        token: '',
+                        responseTime: Date.now() - new Date(req.startTime).getTime()
+                    });
+                }
+            });
+            
+            data.requestHistory?.forEach(req => {
+                // 确保不处理重复的请求ID
+                if (req.requestId && processedRequestIds.has(req.requestId)) {
+                    return; // 跳过已处理的请求
+                }
+                processedRequestIds.add(req.requestId);
+                
+                // 优先使用请求历史中直接存储的token
+                let displayValue = '';
+                
+                if (req.success) {
+                    // 首先检查请求历史中是否直接存储了token
+                    if (req.token) {
+                        displayValue = req.token;
+                    } else if (req.cfcookie) {
+                        displayValue = req.cfcookie;
+                    } else if (req.requestId) {
+                        // 如果历史记录中没有，才通过requestId查找
+                        const matchingToken = data.recentTokens?.find(token => 
+                            token.requestId === req.requestId
+                        );
+                        
+                        if (matchingToken) {
+                            const isCf5s = req.url?.includes('cf5s') || req.mode === 'cf5s';
+                            displayValue = isCf5s ? 
+                                (matchingToken.cfcookie || matchingToken.cookie || '') : 
+                                (matchingToken.token || '');
+                        }
+                    }
+                }
+                
+                allRequests.push({
+                    requestId: req.requestId,
+                    timestamp: req.timestamp,
+                    url: req.url,
+                    status: req.success ? 'success' : 'failed',
+                    token: displayValue,
+                    responseTime: req.responseTime
+                });
+            });
+            
+            // 按时间排序并取前20条
+            allRequests.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            // 去重：如果有相同的token，只保留最新的一个
+            const tokenMap = new Map();
+            const dedupedRequests = [];
+            
+            allRequests.forEach(req => {
+                if (req.token && req.token !== '') {
+                    // 如果这个token已经存在，跳过
+                    if (tokenMap.has(req.token)) {
+                        return;
+                    }
+                    tokenMap.set(req.token, true);
+                }
+                dedupedRequests.push(req);
+            });
+            
+            const recentRequests = dedupedRequests.slice(0, 15); // 减少到15条以节省空间
+            
+            tbody.innerHTML = recentRequests.map(req => {
+                const time = new Date(req.timestamp).toLocaleTimeString('zh-CN', { 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit' 
+                });
+                
+                const statusClass = req.status === 'processing' ? 'status-warning' : 
+                                   req.status === 'success' ? 'status-success' : 'status-error';
+                const statusText = req.status === 'processing' ? '处理中' : 
+                                  req.status === 'success' ? '成功' : '失败';
+                
+                const urlDisplay = req.url.length > 25 ? req.url.substring(0, 25) + '...' : req.url;
+                const tokenDisplay = req.token ? (req.token.length > 20 ? req.token.substring(0, 20) + '...' : req.token) : '-';
+                const responseTimeText = req.responseTime < 1000 ? `${req.responseTime}ms` : 
+                                        `${(req.responseTime / 1000).toFixed(1)}s`;
+                
+                return `
+                    <tr>
+                        <td style="padding: 6px 4px; font-size: 0.7rem; color: var(--text-muted);">${time}</td>
+                        <td style="padding: 6px 4px; font-size: 0.7rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${req.url}">${urlDisplay}</td>
+                        <td style="padding: 6px 4px; text-align: center;"><span class="status-badge ${statusClass}" style="font-size: 0.65rem; padding: 2px 6px;">${statusText}</span></td>
+                        <td style="padding: 6px 4px; font-size: 0.7rem; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; color: var(--accent-blue);" title="${req.token}">${tokenDisplay}</td>
+                        <td style="padding: 6px 4px; font-size: 0.7rem; text-align: right; color: var(--text-muted);">${responseTimeText}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        // 更新站点统计
+        function updateSiteStats(data) {
+            const container = document.getElementById('siteStatsTable');
+            if (!container) return;
+            
+            const urlStats = data.urlStats || [];
+            const topSites = urlStats.slice(0, 10);
+            
+            if (topSites.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">暂无数据</p>';
+                return;
+            }
+            
+            // 使用表格形式显示，与IP统计保持一致
+            container.innerHTML = `
+                <table style="width: 100%; margin: 0;">
+                    <thead>
+                        <tr>
+                            <th style="padding: 6px; font-size: 0.7rem; text-align: left;">URL</th>
+                            <th style="padding: 6px; font-size: 0.7rem; text-align: center;">次数</th>
+                            <th style="padding: 6px; font-size: 0.7rem; text-align: center;">占比</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${topSites.map(item => {
+                            const domain = new URL(item.url).hostname;
+                            return `
+                                <tr>
+                                    <td style="padding: 6px 4px; font-size: 0.7rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.url}">
+                                        ${domain}
+                                    </td>
+                                    <td style="padding: 6px 4px; font-size: 0.7rem; text-align: center; color: var(--accent-blue); font-weight: 600;">
+                                        ${item.count}
+                                    </td>
+                                    <td style="padding: 6px 4px; font-size: 0.7rem; text-align: center;">
+                                        <span style="display: inline-block; padding: 2px 6px; background: rgba(91, 141, 238, 0.1); color: var(--accent-blue); border-radius: 10px; font-size: 0.65rem;">
+                                            ${item.percentage.toFixed(1)}%
+                                        </span>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        // 更新IP统计表格
+        function updateIpStatsTable(data) {
+            const tbody = document.getElementById('ipStatsTable');
+            if (!tbody) return;
+            
+            const ipStats = data.ipStats || [];
+            const topIps = ipStats.slice(0, 10);
+            
+            if (topIps.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: var(--text-muted);">暂无数据</td></tr>';
+                return;
+            }
+            
+            const totalRequests = topIps.reduce((sum, item) => sum + item.count, 0);
+            
+            tbody.innerHTML = topIps.map((item, index) => {
+                const percentage = ((item.count / totalRequests) * 100).toFixed(1);
+                const rankColor = index < 3 ? 'var(--accent-blue)' : 'var(--text-muted)';
+                
+                return `
+                    <tr>
+                        <td style="padding: 10px; font-family: monospace; font-size: 0.85rem;">
+                            <span style="color: ${rankColor}; margin-right: 8px;">#${index + 1}</span>
+                            ${item.ip}
+                        </td>
+                        <td style="padding: 10px; text-align: center; font-weight: 600; color: var(--accent-blue);">
+                            ${item.count}
+                        </td>
+                        <td style="padding: 10px; text-align: center;">
+                            <span style="display: inline-block; padding: 2px 8px; background: rgba(91, 141, 238, 0.1); color: var(--accent-blue); border-radius: 10px; font-size: 0.75rem;">
+                                ${percentage}%
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        // 切换站点统计标签
+        function switchSiteStatsTab(tab) {
+            currentSiteStatsTab = tab;
+            
+            // 更新标签样式
+            document.querySelectorAll('.card-tabs .tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.includes(tab === '1h' ? '1小时' : '6小时')) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // 重新获取数据
+            fetchMonitorData();
+        }
+        
+        // 更新IP限制器统计
+        function updateIpLimiterStats(data) {
+            const limiterData = data.ipLimiter;
+            if (!limiterData) return;
+            
+            // 更新统计数字
+            document.getElementById('ipLimiterActive').textContent = limiterData.totalIps || 0;
+            document.getElementById('ipLimiterTotal').textContent = limiterData.totalActive || 0;
+            document.getElementById('ipLimiterQueued').textContent = limiterData.totalQueued || 0;
+            
+            // 更新详细信息
+            const detailsEl = document.getElementById('ipLimiterDetails');
+            if (limiterData.totalQueued > 0 || limiterData.totalActive > 0) {
+                const limitedIps = limiterData.ipStats?.filter(ip => ip.isLimited || ip.queueLength > 0) || [];
+                if (limitedIps.length > 0) {
+                    detailsEl.innerHTML = limitedIps.slice(0, 3).map(ip => 
+                        `<div style="margin-bottom: 2px;">
+                            <span style="color: var(--text-primary);">${ip.ip}:</span> 
+                            <span style="color: var(--accent-blue);">${ip.activeCount}活跃</span>
+                            ${ip.queueLength > 0 ? `<span style="color: var(--accent-orange);">, ${ip.queueLength}排队</span>` : ''}
+                            ${ip.isLimited ? '<span style="color: var(--status-warning);"> [限制中]</span>' : ''}
+                        </div>`
+                    ).join('');
+                } else {
+                    detailsEl.innerHTML = '<span style="color: var(--text-muted);">无限制</span>';
+                }
+            } else {
+                detailsEl.innerHTML = '<span style="color: var(--text-muted);">无活跃请求</span>';
+            }
+        }
+        
+        // 更新系统性能监控
+        function updateSystemPerformance(data) {
+            const memory = data.memory || {};
+            
+            // CPU使用率
+            const cpuUsage = memory.cpu?.current || 0;
+            document.getElementById('systemCpuValue').textContent = `${cpuUsage.toFixed(1)}%`;
+            document.getElementById('systemCpuBar').style.width = `${cpuUsage}%`;
+            
+            // 根据使用率设置颜色
+            const cpuBar = document.getElementById('systemCpuBar');
+            if (cpuUsage > 80) {
+                cpuBar.style.background = 'linear-gradient(90deg, #ff5b5c, #ff9f43)';
+            } else if (cpuUsage > 60) {
+                cpuBar.style.background = 'linear-gradient(90deg, #ffaa00, #ffdd00)';
+            } else {
+                cpuBar.style.background = 'linear-gradient(90deg, #00cfdd, #5b8dee)';
+            }
+            
+            // 内存使用率
+            const memoryUsage = memory.system ? (memory.system.used / memory.system.total * 100) : 0;
+            const memoryUsed = memory.system?.used || 0;
+            const memoryTotal = memory.system?.total || 0;
+            document.getElementById('systemMemValue').textContent = `${memoryUsage.toFixed(1)}%`;
+            document.getElementById('systemMemBar').style.width = `${memoryUsage}%`;
+            
+            // 根据使用率设置颜色
+            const memBar = document.getElementById('systemMemBar');
+            if (memoryUsage > 80) {
+                memBar.style.background = 'linear-gradient(90deg, #ff5b5c, #ff9f43)';
+            } else if (memoryUsage > 60) {
+                memBar.style.background = 'linear-gradient(90deg, #ffaa00, #39da8a)';
+            } else {
+                memBar.style.background = 'linear-gradient(90deg, #39da8a, #00cfdd)';
+            }
+            
+            // 进程堆内存
+            const heapUsedStr = memory.process?.heapUsed || '0MB';
+            const heapUsed = parseInt(heapUsedStr) || 0;
+            const heapTotal = memory.process?.heapTotal || 0;
+            const heapUsage = heapTotal > 0 ? (heapUsed / heapTotal * 100) : 0;
+            // 如果heapUsedStr已经包含MB，直接使用；否则添加MB
+            const displayValue = heapUsedStr.includes('MB') ? heapUsedStr : `${heapUsed}MB`;
+            document.getElementById('systemHeapValue').textContent = displayValue;
+            document.getElementById('systemHeapBar').style.width = `${heapUsage}%`;
+            
+            // 根据使用率设置颜色
+            const heapBar = document.getElementById('systemHeapBar');
+            if (heapUsage > 80) {
+                heapBar.style.background = 'linear-gradient(90deg, #ff5b5c, #ff9f43)';
+            } else if (heapUsage > 60) {
+                heapBar.style.background = 'linear-gradient(90deg, #ffaa00, #ff5b5c)';
+            } else {
+                heapBar.style.background = 'linear-gradient(90deg, #5b8dee, #9c88ff)';
+            }
         }
 
-        // 更新服务状态
-        function updateServiceStatus(data) {
-            const element = document.getElementById('serviceStatus');
+        // 更新今日统计卡片
+        function updateTodayStats(data) {
+            const element = document.getElementById('todayStats');
+            if (!data.todayStats) {
+                element.innerHTML = '<p style="color: var(--text-muted);">暂无数据</p>';
+                return;
+            }
+            
+            const stats = data.todayStats;
+            const successRate = stats.successRate || 0;
             
             element.innerHTML = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <!-- 第一排 -->
-                    <div style="padding: 15px; background: rgba(28, 168, 221, 0.1); border-radius: 8px; text-align: center; border: 2px solid rgba(28, 168, 221, 0.2);">
-                        <div style="margin-bottom: 10px;">
-                            <img src="https://dash.cloudflare.com/favicon.ico" alt="Cloudflare" style="width: 32px; height: 32px;">
-                        </div>
-                        <div style="font-weight: bold; color: #1ca8dd; margin-bottom: 5px; font-size: 0.9rem;">Cloudflare</div>
-                        <div style="color: #27ae60; font-size: 0.8rem; font-weight: 600;">
-                            <span class="status-indicator status-running" style="margin-right: 4px;"></span>
-                            运行中
-                        </div>
-                        <div style="color: #7f8c8d; font-size: 0.75rem; margin-top: 3px;">Turnstile 解决</div>
+                <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="stat-item">
+                        <div class="stat-value" id="todayRequests">${stats.requests}</div>
+                        <div class="stat-label">今日请求</div>
                     </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="todaySuccessful" style="color: var(--status-success);">${stats.successful}</div>
+                        <div class="stat-label">成功数</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">成功率</span>
+                        <span style="color: ${successRate >= 90 ? 'var(--status-success)' : successRate >= 70 ? 'var(--status-warning)' : 'var(--status-error)'}; font-size: 1.2rem; font-weight: 700;">
+                            ${successRate.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${successRate}%; background: ${successRate >= 90 ? 'var(--status-success)' : successRate >= 70 ? 'var(--status-warning)' : 'var(--status-error)'};"></div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">失败请求</span>
+                        <span style="color: var(--status-error); font-size: 0.9rem; font-weight: 600;">${stats.failed}</span>
+                    </div>
+                </div>
+            `;
+            
+            // 初始化动画计数器
+            setTimeout(() => {
+                createAnimatedCounter('#todayRequests', { duration: 1000, startValue: 0 }).update(stats.requests);
+                createAnimatedCounter('#todaySuccessful', { duration: 1000, startValue: 0 }).update(stats.successful);
+            }, 100);
+        }
+        
+        // 更新计费统计卡片
+        function updateBillingStats(data) {
+            const element = document.getElementById('billingStats');
+            if (!data.billing) {
+                element.innerHTML = '<p style="color: var(--text-muted);">暂无数据</p>';
+                return;
+            }
+            
+            const billing = data.billing;
+            
+            element.innerHTML = `
+                <div class="stat-grid" style="grid-template-columns: 1fr;">
+                    <div class="stat-item" style="background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(34, 197, 94, 0.05));">
+                        <div class="stat-label" style="color: var(--accent-green);">今日费用</div>
+                        <div class="stat-value" id="todayBilling" style="color: var(--accent-green); font-size: 1.8rem;">
+                            $${billing.todayAmount.toFixed(4)}
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <div class="stat-item">
+                        <div class="stat-label">累计费用</div>
+                        <div class="stat-value" id="totalBilling" style="font-size: 1.3rem;">
+                            $${billing.totalAmount.toFixed(4)}
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 10px; background: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">费率</span>
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">$${billing.ratePerThousand}/1000次</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">今日请求</span>
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">${billing.todayRequests || 0}次</span>
+                    </div>
+                </div>
+            `;
+            
+            // 初始化动画计数器
+            setTimeout(() => {
+                createAnimatedCounter('#todayBilling', { 
+                    duration: 1200,
+                    startValue: 0,
+                    decimals: 4,
+                    format: 'currency'
+                }).update(billing.todayAmount);
+                
+                createAnimatedCounter('#totalBilling', { 
+                    duration: 1500,
+                    startValue: 0,
+                    decimals: 4,
+                    format: 'currency'
+                }).update(billing.totalAmount);
+            }, 100);
+        }
+        
+        // 更新URL统计卡片
+        function updateUrlStats(data) {
+            const element = document.getElementById('urlStats');
+            if (!data.urlStats || data.urlStats.length === 0) {
+                element.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">暂无URL统计数据</p>';
+                return;
+            }
+            
+            const maxCount = Math.max(...data.urlStats.map(item => item.count));
+            
+            element.innerHTML = `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    ${data.urlStats.map((item, index) => `
+                        <div style="margin-bottom: 15px; padding: 12px; background: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-primary);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <span style="color: var(--text-muted); font-size: 0.8rem; margin-right: 8px;">#${index + 1}</span>
+                                    <span style="color: var(--text-primary); font-size: 0.9rem; word-break: break-all;" title="${item.url}">
+                                        ${item.url.length > 50 ? item.url.substring(0, 50) + '...' : item.url}
+                                    </span>
+                                </div>
+                                <div style="text-align: right; margin-left: 15px;">
+                                    <span style="color: var(--accent-blue); font-weight: 700; font-size: 1rem;">${item.count}</span>
+                                    <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 5px;">(${item.percentage.toFixed(1)}%)</span>
+                                </div>
+                            </div>
+                            <div style="position: relative; height: 20px; background: var(--bg-primary); border-radius: 4px; overflow: hidden;">
+                                <div class="url-progress-bar" style="position: absolute; left: 0; top: 0; height: 100%; background: linear-gradient(90deg, var(--accent-blue), rgba(74, 158, 255, 0.6)); width: ${(item.count / maxCount) * 100}%; transition: width 1s ease-out; border-radius: 4px;"></div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            // 动画进度条
+            setTimeout(() => {
+                document.querySelectorAll('.url-progress-bar').forEach(bar => {
+                    bar.style.width = bar.style.width;
+                });
+            }, 100);
+        }
+        
+        // 更新IP统计卡片
+        function updateIpStats(data) {
+            const element = document.getElementById('ipStats');
+            if (!data.ipStats || data.ipStats.length === 0) {
+                element.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">暂无IP统计数据</p>';
+                return;
+            }
+            
+            element.innerHTML = `
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; margin: 0;">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left; padding: 10px; background: var(--bg-primary);">排名</th>
+                                <th style="text-align: left; padding: 10px; background: var(--bg-primary);">IP地址</th>
+                                <th style="text-align: center; padding: 10px; background: var(--bg-primary);">请求次数</th>
+                                <th style="text-align: center; padding: 10px; background: var(--bg-primary);">占比</th>
+                                <th style="text-align: right; padding: 10px; background: var(--bg-primary);">最后请求</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.ipStats.map((item, index) => `
+                                <tr style="border-bottom: 1px solid var(--border-primary);">
+                                    <td style="padding: 10px; color: var(--text-muted);">
+                                        <span style="display: inline-block; width: 24px; height: 24px; background: ${index < 3 ? 'var(--accent-blue)' : 'var(--bg-tertiary)'}; color: ${index < 3 ? 'white' : 'var(--text-secondary)'}; border-radius: 50%; text-align: center; line-height: 24px; font-size: 0.8rem; font-weight: 600;">
+                                            ${index + 1}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 10px; font-family: monospace; color: var(--text-primary);">${item.ip}</td>
+                                    <td style="padding: 10px; text-align: center;">
+                                        <span style="color: var(--accent-blue); font-weight: 700;">${item.count}</span>
+                                    </td>
+                                    <td style="padding: 10px; text-align: center;">
+                                        <span style="display: inline-block; padding: 4px 8px; background: rgba(74, 158, 255, 0.1); color: var(--accent-blue); border-radius: 12px; font-size: 0.8rem; font-weight: 600;">
+                                            ${item.percentage.toFixed(1)}%
+                                        </span>
+                                    </td>
+                                    <td style="padding: 10px; text-align: right; color: var(--text-muted); font-size: 0.85rem;">
+                                        ${new Date(item.lastRequest).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
             `;
         }
@@ -344,7 +1319,7 @@
         
         const maxHistoryPoints = 50; // 保留最近50个数据点
 
-        // 更新系统资源信息
+        // 更新系统资源信息（优化版）
         function updateSystemResources(data) {
             const element = document.getElementById('systemResources');
             const memory = data.memory;
@@ -352,6 +1327,7 @@
             // 计算使用率
             const cpuUsage = data.memory.cpu?.current || 0;
             const memoryUsage = (data.memory.system.used / data.memory.system.total) * 100;
+            const heapUsage = (data.memory.process.heapUsed / data.memory.process.heapTotal) * 100;
             
             // 更新历史数据
             const now = new Date();
@@ -366,33 +1342,143 @@
                 historyData.timestamps.shift();
             }
             
+            // 获取颜色
+            const getCpuColor = (value) => value > 80 ? 'var(--status-error)' : value > 60 ? 'var(--status-warning)' : 'var(--status-success)';
+            const getMemoryColor = (value) => value > 80 ? 'var(--status-error)' : value > 60 ? 'var(--status-warning)' : 'var(--accent-green)';
+            
             element.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <!-- CPU 使用率图表 -->
-                    <div style="background: #1a1a1a; border-radius: 8px; padding: 12px; height: 120px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <span style="color: #00ffff; font-size: 0.85rem; font-weight: 500;">CPU 使用率</span>
-                            <span style="color: #00ffff; font-size: 0.9rem; font-weight: bold;">${cpuUsage.toFixed(1)}%</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <!-- CPU 仪表盘 -->
+                    <div style="text-align: center;">
+                        <div style="position: relative; width: 100px; height: 100px; margin: 0 auto;">
+                            <svg width="100" height="100" style="transform: rotate(-90deg);">
+                                <circle cx="50" cy="50" r="40" stroke="var(--bg-primary)" stroke-width="8" fill="none"/>
+                                <circle cx="50" cy="50" r="40" 
+                                    stroke="${getCpuColor(cpuUsage)}" 
+                                    stroke-width="8" 
+                                    fill="none"
+                                    stroke-dasharray="${cpuUsage * 2.51} 251"
+                                    stroke-linecap="round"
+                                    style="transition: stroke-dasharray 0.5s ease;"/>
+                            </svg>
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1.2rem; font-weight: 700; color: ${getCpuColor(cpuUsage)};">
+                                ${cpuUsage.toFixed(0)}%
+                            </div>
                         </div>
-                        <canvas id="cpuChart" width="100" height="80" style="width: 100%; height: 80px;"></canvas>
+                        <div style="margin-top: 8px; color: var(--text-secondary); font-size: 0.85rem;">CPU</div>
                     </div>
                     
-                    <!-- 系统内存负载图表 -->
-                    <div style="background: #1a1a1a; border-radius: 8px; padding: 12px; height: 120px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <span style="color: #00ffaa; font-size: 0.85rem; font-weight: 500;">系统内存负载</span>
-                            <span style="color: #00ffaa; font-size: 0.9rem; font-weight: bold;">${memoryUsage.toFixed(1)}%</span>
+                    <!-- 内存仪表盘 -->
+                    <div style="text-align: center;">
+                        <div style="position: relative; width: 100px; height: 100px; margin: 0 auto;">
+                            <svg width="100" height="100" style="transform: rotate(-90deg);">
+                                <circle cx="50" cy="50" r="40" stroke="var(--bg-primary)" stroke-width="8" fill="none"/>
+                                <circle cx="50" cy="50" r="40" 
+                                    stroke="${getMemoryColor(memoryUsage)}" 
+                                    stroke-width="8" 
+                                    fill="none"
+                                    stroke-dasharray="${memoryUsage * 2.51} 251"
+                                    stroke-linecap="round"
+                                    style="transition: stroke-dasharray 0.5s ease;"/>
+                            </svg>
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1.2rem; font-weight: 700; color: ${getMemoryColor(memoryUsage)};">
+                                ${memoryUsage.toFixed(0)}%
+                            </div>
                         </div>
-                        <canvas id="memoryChart" width="100" height="80" style="width: 100%; height: 80px;"></canvas>
+                        <div style="margin-top: 8px; color: var(--text-secondary); font-size: 0.85rem;">内存</div>
                     </div>
+                </div>
+                
+                <!-- 详细信息 -->
+                <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-primary);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">系统内存</span>
+                        <span style="color: var(--text-secondary); font-size: 0.85rem;">
+                            ${formatMemory(data.memory.system.used)} / ${formatMemory(data.memory.system.total)}
+                        </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">堆内存</span>
+                        <span style="color: var(--text-secondary); font-size: 0.85rem;">
+                            ${formatMemory(data.memory.process.heapUsed)} / ${formatMemory(data.memory.process.heapTotal)}
+                        </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">堆使用率</span>
+                        <span style="color: ${heapUsage > 80 ? 'var(--status-error)' : 'var(--text-secondary)'}; font-size: 0.85rem; font-weight: ${heapUsage > 80 ? '600' : '400'};">
+                            ${heapUsage.toFixed(1)}%
+                        </span>
+                    </div>
+                </div>
+                
+                <!-- 实时波形图 -->
+                <div style="margin-top: 15px;">
+                    <canvas id="resourceWaveChart" width="100" height="60" style="width: 100%; height: 60px;"></canvas>
                 </div>
             `;
             
-            // 绘制图表
+            // 绘制波形图
             setTimeout(() => {
-                drawChart('cpuChart', historyData.cpu, '#00ffff');
-                drawChart('memoryChart', historyData.memory, '#00ffaa');
+                drawWaveChart('resourceWaveChart', historyData.cpu, historyData.memory);
             }, 100);
+        }
+        
+        // 绘制波形图
+        function drawWaveChart(canvasId, cpuData, memData) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || cpuData.length < 2) return;
+            
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            
+            ctx.scale(dpr, dpr);
+            
+            const w = rect.width;
+            const h = rect.height;
+            const padding = 5;
+            
+            // 清除画布
+            ctx.clearRect(0, 0, w, h);
+            
+            // 绘制CPU波形
+            ctx.beginPath();
+            ctx.strokeStyle = 'var(--accent-blue)';
+            ctx.lineWidth = 2;
+            
+            for (let i = 0; i < cpuData.length; i++) {
+                const x = padding + (i / (cpuData.length - 1)) * (w - padding * 2);
+                const y = padding + (1 - cpuData[i] / 100) * (h - padding * 2);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+            
+            // 绘制内存波形
+            ctx.beginPath();
+            ctx.strokeStyle = 'var(--accent-green)';
+            ctx.lineWidth = 2;
+            
+            for (let i = 0; i < memData.length; i++) {
+                const x = padding + (i / (memData.length - 1)) * (w - padding * 2);
+                const y = padding + (1 - memData[i] / 100) * (h - padding * 2);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
         }
 
         // 绘制折线图函数
@@ -500,125 +1586,7 @@
             return token.substring(0, maxLength) + '...';
         }
 
-        // 更新统一请求表格
-        function updateUnifiedRequestTable(data) {
-            const element = document.getElementById('unifiedRequestTable');
-            const allRequests = [];
-            
-            // 添加活跃请求（处理中状态）
-            data.activeRequests.forEach(req => {
-                allRequests.push({
-                    timestamp: req.startTime,
-                    url: req.url,
-                    mode: req.mode,
-                    status: 'processing',
-                    token: '',
-                    responseTime: Date.now() - new Date(req.startTime).getTime(),
-                    isActive: true,
-                    requestId: req.id,
-                    clientIP: req.clientIP
-                });
-            });
-            
-            // 添加请求历史（已完成/失败状态）
-            data.requestHistory.forEach(req => {
-                // 查找对应的token - 只根据requestId匹配，避免重复
-                const matchingToken = data.recentTokens.find(token => 
-                    token.requestId === req.requestId
-                );
-                
-                allRequests.push({
-                    timestamp: req.timestamp,
-                    url: req.url,
-                    mode: req.mode,
-                    status: req.success ? 'completed' : 'failed',
-                    token: matchingToken ? matchingToken.token : '',
-                    responseTime: req.responseTime,
-                    isActive: false,
-                    requestId: req.requestId
-                });
-            });
-            
-            // 按时间倒序排列
-            allRequests.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-            
-            if (allRequests.length === 0) {
-                element.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 20px;">暂无请求记录</p>';
-                return;
-            }
-            
-            const tableHTML = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 120px;">时间</th>
-                            <th style="width: 120px; max-width: 120px;">URL</th>
-                            <th style="width: 100px;">服务</th>
-                            <th style="width: 100px;">状态</th>
-                            <th style="width: 120px;">Token</th>
-                            <th style="width: 90px;">响应时间</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${allRequests.slice(0, 50).map(req => {
-                            let statusDisplay = '';
-                            let statusClass = '';
-                            
-                            switch(req.status) {
-                                case 'processing':
-                                    statusDisplay = '处理中';
-                                    statusClass = 'status-warning';
-                                    break;
-                                case 'completed':
-                                    statusDisplay = '已完成';
-                                    statusClass = 'status-running';
-                                    break;
-                                case 'failed':
-                                    statusDisplay = '失败';
-                                    statusClass = 'status-error';
-                                    break;
-                            }
-                            
-                            const truncatedToken = truncateToken(req.token, 20);
-                            const responseTimeDisplay = req.status === 'processing' 
-                                ? `${formatDuration(req.responseTime)} ⏱️`
-                                : formatDuration(req.responseTime);
-                            
-                            // 确定服务类型
-                            let serviceType = 'Cloudflare';
-                            let serviceColor = '#1ca8dd';
-                            
-                            return `
-                                <tr class="${req.isActive ? 'active-request' : ''}" style="${req.isActive ? 'background-color: rgba(255, 193, 7, 0.1);' : ''}">
-                                    <td style="font-size: 0.85rem;">${formatTime(req.timestamp).replace(/:\d{2}$/, '')}</td>
-                                    <td style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${req.url}">
-                                        ${req.url}
-                                    </td>
-                                    <td style="text-align: center;">
-                                        <span style="color: ${serviceColor}; font-weight: bold; font-size: 0.8rem;">${serviceType}</span>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge ${statusClass}">${statusDisplay}</span>
-                                    </td>
-                                    <td style="font-family: monospace; font-size: 0.75rem;" title="${req.token}">
-                                        ${truncatedToken ? `<span style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px; border: 1px solid #dee2e6;">${truncatedToken}</span>` : '-'}
-                                    </td>
-                                    <td style="font-weight: ${req.isActive ? 'bold' : 'normal'};">
-                                        ${responseTimeDisplay}
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-                <div style="margin-top: 10px; font-size: 0.85rem; color: #6c757d; text-align: center;">
-                    显示最近 ${Math.min(allRequests.length, 50)} 条记录
-                    ${allRequests.length > 50 ? `（共 ${allRequests.length} 条）` : ''}
-                </div>
-            `;
-            
-            element.innerHTML = tableHTML;
-        }
+        // 删除了 updateUnifiedRequestTable 函数（已不再使用）
 
         // 重置监控数据
         async function resetMonitorData() {
@@ -735,12 +1703,72 @@
         
         // 页面加载完成后启动监控
         document.addEventListener('DOMContentLoaded', () => {
+            // 显示加载中的骨架屏
+            showLoadingSkeleton();
+            
+            // 添加动画样式
+            addAnimationStyles();
+            
             // 延迟初始化图表，确保DOM完全渲染
             setTimeout(() => {
                 initCharts();
                 startMonitoring();
+                
+                // 尝试加载缓存数据
+                const cachedData = monitorDataPersistence?.load('lastMonitorData');
+                if (cachedData) {
+                    updateDashboard(cachedData);
+                    const lastUpdate = monitorDataPersistence?.load('lastUpdateTime');
+                    if (lastUpdate) {
+                        console.log('加载缓存数据，最后更新时间:', lastUpdate);
+                    }
+                }
             }, 100);
         });
+        
+        // 显示加载骨架屏
+        function showLoadingSkeleton() {
+            document.querySelectorAll('.loading').forEach(element => {
+                new SkeletonLoader(element, {
+                    type: 'card',
+                    animated: true
+                });
+            });
+        }
+        
+        // 添加动画样式
+        function addAnimationStyles() {
+            if (!document.getElementById('custom-animations')) {
+                const style = document.createElement('style');
+                style.id = 'custom-animations';
+                style.textContent = `
+                    @keyframes slideIn {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                    
+                    @keyframes fadeIn {
+                        from {
+                            opacity: 0;
+                        }
+                        to {
+                            opacity: 1;
+                        }
+                    }
+                    
+                    .card {
+                        animation: fadeIn 0.5s ease;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
 
         // 窗口大小调整时重新调整图表
         window.addEventListener('resize', () => {

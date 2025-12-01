@@ -1,194 +1,175 @@
 /**
  * CF Cookie Service - 专门提取 cf_clearance cookie
- * 使用上下文池优化版本，兼容 puppeteer-real-browser
- * 支持返回完整的 headers 和 cookies 信息
+ * 优化版本：资源拦截、快速清理、减少内存占用
  */
-async function getCfClearance({ url, proxy, mode }) {
+const crypto = require("crypto");
+const siteQueueManager = require("../utils/siteQueueManager");
+const logger = require("../../../src/utils/logger");
+
+// 需要阻止的资源类型
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
+
+// 需要阻止的URL模式
+const BLOCKED_URL_PATTERNS = [
+  /google-analytics/i, /googletagmanager/i, /facebook.*pixel/i,
+  /doubleclick/i, /hotjar/i, /mixpanel/i, /sentry\.io/i
+];
+
+function shouldBlockUrl(url) {
+  return BLOCKED_URL_PATTERNS.some(p => p.test(url));
+}
+
+function domainMatches(cookieDomain, host) {
+  if (!cookieDomain || !host) return false;
+  const cd = cookieDomain.startsWith('.') ? cookieDomain.slice(1) : cookieDomain;
+  return host === cd || host.endsWith('.' + cd);
+}
+
+async function getCfClearance({ url, proxy, mode, requestId }) {
   return new Promise(async (resolve, reject) => {
     if (!url) return reject("Missing url parameter");
-    
+
+    const reqId = requestId || crypto.randomBytes(8).toString('hex');
+    const startTime = Date.now();
     let context = null;
     let page = null;
+    let timeoutId = null;
     let isResolved = false;
-    let contextClosed = false;
-    
-    const cleanup = async () => {
+
+    // 解析hostname
+    let hostname = null;
+    try { hostname = new URL(url).hostname; } catch (_) {}
+
+    // 统一清理函数
+    const cleanup = async (success = false) => {
+      if (isResolved) return;
+      isResolved = true;
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
       if (page) {
-        try {
-          await page.close().catch(() => {});
-        } catch (e) {}
+        try { await page.close().catch(() => {}); } catch (e) {}
+        page = null;
       }
-      if (context && !contextClosed) {
-        try {
-          contextClosed = true;
-          // 使用上下文池释放上下文
-          if (global.contextPool && typeof global.contextPool.releaseContext === 'function') {
-            await global.contextPool.releaseContext(context);
-          } else {
-            // 回退到直接关闭
-            await context.close();
-          }
-        } catch (e) {
-          console.error("Error releasing context:", e.message);
-        }
+
+      if (context) {
+        try { await context.close().catch(() => {}); } catch (e) {}
+        context = null;
       }
+
+      siteQueueManager.releaseSlot(url, null, reqId, success, Date.now() - startTime);
     };
-    
-    const timeoutHandler = setTimeout(async () => {
-      if (!isResolved) {
-        isResolved = true;
-        await cleanup();
-        reject("Timeout Error - cf_clearance cookie not obtained");
-      }
-    }, global.timeOut || 120000);
+
+    // 加入站点队列
+    const qres = await siteQueueManager.queueRequest(url, null, reqId);
+    if (qres && qres.timeout) {
+      return reject(`Queue timeout for request ${reqId}`);
+    }
 
     try {
-      // 使用上下文池获取上下文
-      if (global.contextPool && typeof global.contextPool.getContext === 'function') {
-        context = await global.contextPool.getContext();
-      } else {
-        // 回退到直接创建
-        context = await global.browser
-          .createBrowserContext({
-            proxyServer: proxy ? `http://${proxy.host}:${proxy.port}` : undefined,
-          })
-          .catch(() => null);
-      }
-        
+      // 创建浏览器上下文
+      const ctxOpts = proxy ? { proxyServer: `http://${proxy.host}:${proxy.port}` } : undefined;
+      context = await global.browser.createBrowserContext(ctxOpts).catch(() => null);
+
       if (!context) {
-        clearTimeout(timeoutHandler);
+        await cleanup(false);
         return reject("Failed to create browser context");
       }
 
+      // 设置超时
+      timeoutId = setTimeout(async () => {
+        if (!isResolved) {
+          logger.requestTimeout(reqId, Date.now() - startTime);
+          await cleanup(false);
+          reject("Timeout - cf_clearance not obtained");
+        }
+      }, global.timeOut || 90000);
+
       page = await context.newPage();
-      
+
+      // 代理认证
       if (proxy?.username && proxy?.password) {
-        await page.authenticate({
-          username: proxy.username,
-          password: proxy.password,
-        });
+        await page.authenticate({ username: proxy.username, password: proxy.password });
       }
 
-      console.log(`正在访问: ${url}`);
-      
-      // 直接访问页面
-      await page.goto(url, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
+      // 设置请求拦截 - 阻止不必要的资源
+      await page.setRequestInterception(true);
+      page.on("request", async (request) => {
+        try {
+          const resourceType = request.resourceType();
+          const reqUrl = request.url();
+
+          if (BLOCKED_RESOURCE_TYPES.has(resourceType) || shouldBlockUrl(reqUrl)) {
+            await request.abort();
+          } else {
+            await request.continue();
+          }
+        } catch (e) {}
       });
-      
-      // 等待页面完全加载，让 Cloudflare 有时间设置 cookie
-      console.log('等待页面加载和 Cloudflare 验证...');
-      
-      let maxWaitTime = 90; // 等待90秒
-      let checkInterval = 3; // 每3秒检查一次，减少频率
-      
+
+      // 访问页面
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+      // 等待 cf_clearance cookie - 优化的检查逻辑
+      const maxWaitTime = 60; // 60秒
+      const checkInterval = 2; // 2秒检查一次
+
       for (let i = 0; i < maxWaitTime / checkInterval; i++) {
         if (isResolved) break;
-        
-        await new Promise(resolve => setTimeout(resolve, checkInterval * 1000));
-        
+
+        await new Promise(r => setTimeout(r, checkInterval * 1000));
+
         try {
-          // 检查 cf_clearance cookie
-          const cookies = await page.cookies();
-          const cfClearanceCookie = cookies.find(cookie => cookie.name === 'cf_clearance');
-          
-          if (cfClearanceCookie && cfClearanceCookie.value) {
-            console.log('✅ 成功获取 cf_clearance cookie');
-            isResolved = true;
-            clearTimeout(timeoutHandler);
-            
-            // 如果是 cf5s 模式，返回完整信息
-            if (mode === 'cf5s') {
-              // 获取所有cookies
-              const allCookies = await page.cookies();
-              
-              // 获取User-Agent和其他headers
-              const userAgent = await page.evaluate(() => navigator.userAgent);
-              
-              const fullResponse = {
-                code: 200,
-                cf_clearance: cfClearanceCookie.value,
-                headers: {
-                  "User-Agent": userAgent,
-                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                  "Accept-Language": "en-US,en;q=0.9",
-                  "Accept-Encoding": "gzip, deflate, br",
-                  "DNT": "1",
-                  "Connection": "keep-alive",
-                  "Upgrade-Insecure-Requests": "1",
-                  "Sec-Fetch-Dest": "document",
-                  "Sec-Fetch-Mode": "navigate",
-                  "Sec-Fetch-Site": "none",
-                  "Sec-Fetch-User": "?1",
-                  "Cache-Control": "max-age=0"
-                },
-                cookies: allCookies.map(cookie => ({
-                  name: cookie.name,
-                  value: cookie.value,
-                  domain: cookie.domain,
-                  path: cookie.path,
-                  expires: cookie.expires,
-                  httpOnly: cookie.httpOnly,
-                  secure: cookie.secure,
-                  sameSite: cookie.sameSite
-                })),
-                url: url,
-                timestamp: new Date().toISOString()
-              };
-              
-              await cleanup();
-              resolve(fullResponse);
-              return;
-            }
-            
-            // 兼容旧模式，只返回 cf_clearance 值
-            await cleanup();
-            resolve(cfClearanceCookie.value);
-            return;
+          const cookies = await page.cookies(url).catch(() => page.cookies());
+          const filteredCookies = cookies.filter(c => domainMatches(c.domain, hostname));
+          const cfCookie = filteredCookies.find(c => c.name === 'cf_clearance');
+
+          if (cfCookie && cfCookie.value) {
+            logger.cookieSuccess(reqId, 'cf_clearance');
+
+            // 构建响应
+            const userAgent = await page.evaluate(() => navigator.userAgent);
+            const response = {
+              code: 200,
+              cf_clearance: cfCookie.value,
+              headers: {
+                "User-Agent": userAgent,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br"
+              },
+              cookies: filteredCookies.map(c => ({
+                name: c.name, value: c.value, domain: c.domain,
+                path: c.path, expires: c.expires, httpOnly: c.httpOnly,
+                secure: c.secure, sameSite: c.sameSite
+              })),
+              url: url,
+              timestamp: new Date().toISOString()
+            };
+
+            await cleanup(true);
+            return resolve(response);
           }
-          
-          // 检查页面状态 - 简化检查
-          const content = await page.content();
-          const isCloudflareChallenge = content.includes('Just a moment') || 
-                                      content.includes('cf-browser-verification') ||
-                                      content.includes('Checking if the site connection is secure') ||
-                                      content.includes('DDoS protection by Cloudflare') ||
-                                      content.includes('Ray ID:');
-          
-          if (isCloudflareChallenge) {
-            console.log(`⏳ Cloudflare 验证中... (${i * checkInterval}/${maxWaitTime}s)`);
-          } else {
-            console.log(`🔍 页面已加载，等待 cf_clearance cookie... (${i * checkInterval}/${maxWaitTime}s)`);
-            
-            // 如果页面已经加载完成但没有验证页面，可能需要刷新一下
-            if (i > 5 && i % 10 === 0) {
-              console.log('🔄 尝试刷新页面以触发 Cloudflare 验证...');
-              await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-            }
+
+          // 每20秒刷新一次（如果还没获取到）
+          if (i > 0 && i % 10 === 0) {
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
           }
-          
         } catch (e) {
-          console.error('检查过程中发生错误:', e.message);
-          // 继续等待，不立即退出
+          // 继续等待
         }
       }
-      
-      // 如果循环结束仍未找到 cookie
-      if (!isResolved) {
-        isResolved = true;
-        clearTimeout(timeoutHandler);
-        await cleanup();
-        reject('cf_clearance cookie not found after waiting');
-      }
-      
+
+      // 超时未获取到
+      await cleanup(false);
+      reject('cf_clearance cookie not found');
+
     } catch (e) {
-      if (!isResolved) {
-        isResolved = true;
-        clearTimeout(timeoutHandler);
-        await cleanup();
-        reject(e.message || 'Unknown error while getting cf_clearance');
-      }
+      await cleanup(false);
+      reject(e.message || 'Unknown error');
     }
   });
 }

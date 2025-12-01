@@ -7,8 +7,23 @@ const port = process.env.PORT || 3001
 const bodyParser = require('body-parser')
 const authToken = process.env.AUTH_TOKEN || process.env.authToken || null // 兼容旧格式
 const cors = require('cors')
+const { v4: uuidv4 } = require('uuid')
 const reqValidate = require('../captcha-solvers/turnstile/module/reqValidate')
 const memoryManager = require('./utils/memoryManager')
+const StatsManager = require('./utils/statsManager')
+const globalRequestManager = require('./utils/globalRequestManager')
+const logger = require('./utils/logger')
+
+// 延迟加载上下文池（避免循环依赖）
+let turnstileContextPool = null;
+function getContextPool() {
+    if (!turnstileContextPool) {
+        try {
+            turnstileContextPool = require('../captcha-solvers/turnstile/utils/contextPool');
+        } catch (e) {}
+    }
+    return turnstileContextPool;
+}
 
 // 请求计数器（替代浏览器实例计数）
 global.activeRequestCount = 0
@@ -19,6 +34,7 @@ global.maxMemoryUsage = Number(process.env.MAX_MEMORY_USAGE || process.env.maxMe
 
 // 监控数据
 global.monitoringData = {
+    // 基础统计
     startTime: new Date(),
     totalRequests: 0,
     successfulRequests: 0,
@@ -29,7 +45,29 @@ global.monitoringData = {
     activeRequestsByService: { // 按服务类型分组的活跃请求
         cloudflare: 0
     },
-    lastRequestTime: new Date() // 最后一次请求时间
+    lastRequestTime: new Date(), // 最后一次请求时间
+    
+    // 新增统计字段
+    dailyStats: {
+        date: new Date().toDateString(),
+        requests: 0,
+        successful: 0,
+        failed: 0,
+        billing: 0
+    },
+    
+    // URL统计 - 使用Map存储 url -> { count, lastRequest }
+    urlStats: new Map(),
+    
+    // IP统计 - 使用Map存储 ip -> { count, lastRequest }
+    ipStats: new Map(),
+    
+    // 历史数据（用于持久化）
+    historicalData: {
+        totalBilling: 0,
+        urlHistory: {},
+        ipHistory: {}
+    }
 }
 
 // 自动重启检查配置
@@ -47,10 +85,8 @@ app.use(cors())
 // 静态文件服务（用于监控页面）
 app.use('/monitor', require('express').static(__dirname + '/../monitor'))
 if (process.env.NODE_ENV !== 'development') {
-    let server = app.listen(port, '0.0.0.0', () => { 
-        console.log(`Server running on port ${port}`)
-        console.log(`Local access: http://localhost:${port}`)
-        console.log(`Network access: http://0.0.0.0:${port}`)
+    let server = app.listen(port, '0.0.0.0', () => {
+        logger.serverStarted(port)
     })
     try {
         server.timeout = global.timeOut
@@ -63,16 +99,24 @@ if (process.env.NODE_ENV !== 'test') {
     memoryManager.startMonitoring()
 }
 
+// 初始化统计管理器
+global.statsManager = new StatsManager()
+
+// 启动定期数据清理（仅在非测试环境）
+if (process.env.NODE_ENV !== 'test') {
+    global.cleanupTimer = setInterval(() => {
+        global.statsManager.cleanupOldData()
+    }, 60 * 60 * 1000) // 每小时清理一次
+}
+
 // 启动自动重启检查（仅在非测试环境）
 if (process.env.NODE_ENV !== 'test' && global.autoRestartConfig.enabled) {
     startAutoRestartCheck()
 }
 
-const getSource = require('../captcha-solvers/turnstile/endpoints/getSource')
 const solveTurnstileMin = require('../captcha-solvers/turnstile/endpoints/solveTurnstile.min')
-const solveTurnstileMax = require('../captcha-solvers/turnstile/endpoints/solveTurnstile.max')
-const wafSession = require('../captcha-solvers/turnstile/endpoints/wafSession')
 const getCfClearance = require('../captcha-solvers/turnstile/endpoints/cfcookieService')
+const getCookies = require('../captcha-solvers/turnstile/endpoints/getCookies')
 
 
 // 统一验证码处理接口 - 根路径
@@ -83,7 +127,7 @@ app.post('/', async (req, res) => {
         if (!type) {
             return res.status(400).json({
                 code: 400,
-                message: 'Missing required parameter: type. Supported types: cftoken, cf5s',
+                message: 'Missing required parameter: type. Supported types: cftoken, cf5s, cookies',
                 token: null
             });
         }
@@ -95,15 +139,18 @@ app.post('/', async (req, res) => {
             case 'cf5s':
                 return await handleCf5sRequest(req, res);
             
+            case 'cookies':
+                return await handleCookiesRequest(req, res);
+            
             default:
                 return res.status(400).json({
                     code: 400,
-                    message: `Unsupported type: ${type}. Supported types: cftoken, cf5s`,
+                    message: `Unsupported type: ${type}. Supported types: cftoken, cf5s, cookies`,
                     token: null
                 });
         }
     } catch (error) {
-        console.error('Error in unified captcha handler:', error);
+        logger.error('请求', `统一处理器错误: ${error.message}`);
         return res.status(500).json({
             code: 500,
             message: `Internal server error: ${error.message}`,
@@ -139,7 +186,8 @@ async function handleCftokenRequest(req, res) {
         url: data.websiteUrl,
         siteKey: data.websiteKey,
         mode: 'turnstile-min',
-        authToken: data.authToken
+        authToken: data.authToken,
+        proxy: data.proxy
     };
 
     // 处理请求
@@ -163,7 +211,34 @@ async function handleCf5sRequest(req, res) {
     const internalData = {
         url: data.websiteUrl,
         mode: 'cf5s',
-        authToken: data.authToken
+        authToken: data.authToken,
+        proxy: data.proxy
+    };
+
+    // 处理请求
+    return handleClearanceRequest(req, res, internalData);
+}
+
+// 处理 cookies 请求（获取网站所有cookies）
+async function handleCookiesRequest(req, res) {
+    const data = req.body;
+
+    // 参数验证
+    if (!data.websiteUrl) {
+        return res.status(400).json({ 
+            code: 400, 
+            message: 'websiteUrl is required',
+            cookies: null 
+        });
+    }
+
+    // 转换为内部格式
+    const internalData = {
+        url: data.websiteUrl,
+        mode: 'cookies',
+        authToken: data.authToken,
+        proxy: data.proxy,
+        waitTime: data.waitTime || 10000  // 默认等待10秒
     };
 
     // 处理请求
@@ -171,11 +246,6 @@ async function handleCf5sRequest(req, res) {
 }
 
 
-// 保留原始API格式支持 (向后兼容)
-app.post('/cf-clearance-scraper', async (req, res) => {
-    const data = req.body
-    return handleClearanceRequest(req, res, data)
-})
 
 // 统一的请求处理函数
 async function handleClearanceRequest(req, res, data) {
@@ -185,9 +255,50 @@ async function handleClearanceRequest(req, res, data) {
 
     if (authToken && data.authToken !== authToken) return res.status(401).json({ code: 401, message: 'Unauthorized' })
 
-    if (global.activeRequestCount >= global.maxConcurrentRequests) return res.status(429).json({ code: 429, message: 'Too Many Requests' })
-
     if (process.env.SKIP_LAUNCH != 'true' && !global.browser) return res.status(500).json({ code: 500, message: 'The scanner is not ready yet. Please try again a little later.' })
+
+    // 检查系统压力 - 在高压时拒绝新请求
+    const pressureCheck = memoryManager.shouldAcceptRequest()
+    if (!pressureCheck.accept) {
+        logger.rateLimited(null, pressureCheck.reason)
+        return res.status(503).json({
+            code: 503,
+            message: pressureCheck.reason,
+            pressureLevel: memoryManager.getPressureLevel()
+        })
+    }
+
+    // 生成唯一请求ID
+    const requestId = uuidv4()
+
+    // 获取真实IP地址
+    const clientIP = req.headers['x-real-ip'] ||
+                     req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+                     req.ip ||
+                     req.socket.remoteAddress ||
+                     '127.0.0.1'
+
+    // 全局处理限制检查（动态并发控制）
+    const globalCheck = await globalRequestManager.requestProcessing(requestId, {
+        url: data.url,
+        mode: data.mode,
+        clientIP: clientIP
+    })
+    
+    if (!globalCheck.allowed) {
+        logger.rateLimited(requestId, globalCheck.reason)
+        return res.status(429).json({ 
+            code: 429, 
+            message: `Global rate limit: ${globalCheck.reason}`,
+            processing: globalCheck.processingCount,
+            waiting: globalCheck.waitingCount
+        })
+    }
+    
+    // 如果请求从全局等待池释放，记录信息
+    if (globalCheck.queued) {
+        logger.requestDequeued(requestId, globalCheck.waitTime, '全局')
+    }
 
     var result = { code: 500 }
 
@@ -197,8 +308,8 @@ async function handleClearanceRequest(req, res, data) {
     // 更新最后请求时间
     global.monitoringData.lastRequestTime = new Date()
     
-    // 生成请求ID
-    const requestId = Date.now() + '_' + Math.random().toString(36).substring(2, 11)
+    // 使用统计管理器更新请求开始统计
+    global.statsManager.updateRequestStart(data.url, clientIP)
     
     // 记录活跃请求
     global.monitoringData.activeRequests.set(requestId, {
@@ -206,7 +317,7 @@ async function handleClearanceRequest(req, res, data) {
         url: data.url,
         mode: data.mode,
         startTime: new Date(),
-        clientIP: req.ip || req.socket.remoteAddress
+        clientIP: clientIP
     })
     
     // 更新按服务分组的活跃请求计数
@@ -220,38 +331,40 @@ async function handleClearanceRequest(req, res, data) {
             global.monitoringData.activeRequestsByService.cloudflare--;
         }
         global.monitoringData.activeRequests.delete(requestId)
-        console.log('Request timeout, cleaning up')
+        globalRequestManager.releaseProcessing(requestId)
+        logger.requestTimeout(requestId, global.timeOut)
     }, global.timeOut + 5000)
 
+    // 为下游打码请求添加请求ID（用于站点队列追踪与日志）
+    const dataWithRequestId = { ...data, requestId };
+    
     switch (data.mode) {
-        case "source":
-            result = await getSource(data).then(res => { return { source: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
         case "turnstile-min":
-            result = await solveTurnstileMin(data).then(res => { return { token: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
+            result = await solveTurnstileMin(dataWithRequestId).then(res => { return { token: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
             break;
-        case "turnstile-max":
-            result = await solveTurnstileMax(data).then(res => { return { token: res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "waf-session":
-            result = await wafSession(data).then(res => { return { ...res, code: 200 } }).catch(err => { return { code: 500, message: err.message } })
-            break;
-        case "cfcookie":
         case "cf5s":
-            result = await getCfClearance(data).then(res => { 
+            result = await getCfClearance(dataWithRequestId).then(res => { 
                 // 如果是 cf5s 模式，返回完整信息
-                if (data.mode === 'cf5s' && typeof res === 'object' && res.cf_clearance) {
+                if (typeof res === 'object' && res.cf_clearance) {
                     return res;
                 }
                 // 兼容旧格式
                 return { cf_clearance: res, code: 200 } 
             }).catch(err => { return { code: 500, message: err.message } })
             break;
+        case "cookies":
+            result = await getCookies(dataWithRequestId).then(res => {
+                return res;  // getCookies已经返回完整格式
+            }).catch(err => { return { code: 500, message: err.message } })
+            break;
+        default:
+            result = { code: 400, message: `Unsupported mode: ${data.mode}` }
+            break;
     }
 
     global.activeRequestCount--
     clearTimeout(requestTimeout)
-    
+
     // 更新监控数据 - 先获取请求信息，再删除
     const request = global.monitoringData.activeRequests.get(requestId)
     const requestStartTime = request?.startTime
@@ -261,18 +374,33 @@ async function handleClearanceRequest(req, res, data) {
     }
     global.monitoringData.activeRequests.delete(requestId)
     
-    if (result.code === 200) {
+    const isSuccess = result.code === 200
+    
+    if (isSuccess) {
         global.monitoringData.successfulRequests++
         
-        // 记录token（如果有）
-        if (result.token) {
-            global.monitoringData.recentTokens.unshift({
-                token: result.token,
+        // 记录token或cf_clearance（如果有）
+        if (result.token || result.cf_clearance) {
+            const tokenRecord = {
                 url: data.url,
                 mode: data.mode,
                 timestamp: new Date(),
                 requestId: requestId
-            })
+            }
+            
+            // 根据不同模式存储不同的值
+            if (result.token) {
+                tokenRecord.token = result.token
+            }
+            if (result.cf_clearance) {
+                tokenRecord.cfcookie = result.cf_clearance
+                tokenRecord.cookie = result.cf_clearance  // 兼容性
+            }
+            if (result.cookies) {
+                tokenRecord.cookies = result.cookies
+            }
+            
+            global.monitoringData.recentTokens.unshift(tokenRecord)
             
             // 只保留最近50个token
             if (global.monitoringData.recentTokens.length > 50) {
@@ -283,15 +411,30 @@ async function handleClearanceRequest(req, res, data) {
         global.monitoringData.failedRequests++
     }
     
+    // 使用统计管理器更新请求结果
+    global.statsManager.updateRequestResult(isSuccess)
+    
     // 记录请求历史 - 使用之前获取的开始时间
-    global.monitoringData.requestHistory.unshift({
+    // 同时存储token值以避免后续查找问题
+    const historyRecord = {
         requestId: requestId,
         url: data.url,
         mode: data.mode,
         success: result.code === 200,
         timestamp: new Date(),
         responseTime: requestStartTime ? Date.now() - requestStartTime.getTime() : 0
-    })
+    }
+    
+    // 如果成功且有token，直接存储在历史记录中
+    if (result.code === 200) {
+        if (result.token) {
+            historyRecord.token = result.token
+        } else if (result.cf_clearance) {
+            historyRecord.cfcookie = result.cf_clearance
+        }
+    }
+    
+    global.monitoringData.requestHistory.unshift(historyRecord)
     
     // 只保留最近100条历史
     if (global.monitoringData.requestHistory.length > 100) {
@@ -301,8 +444,11 @@ async function handleClearanceRequest(req, res, data) {
     // 检查内存使用情况
     const memStats = memoryManager.checkMemoryUsage()
     if (memStats.heapUsagePercent > 0.8) {
-        console.log('⚠️  High memory usage after request completion')
+        logger.memoryWarning('high', Math.round(memStats.heapUsed / 1024 / 1024), Math.round(memStats.heapTotal / 1024 / 1024), Math.round(memStats.heapUsagePercent * 100))
     }
+
+    // 释放全局管理器资源
+    globalRequestManager.releaseProcessing(requestId)
 
     res.status(result.code ?? 500).send(result)
 }
@@ -336,6 +482,27 @@ app.get('/api/monitor', (_, res) => {
                     (global.monitoringData.successfulRequests / global.monitoringData.totalRequests * 100).toFixed(2) : 0
             },
             
+            // 新增：今日统计
+            todayStats: global.statsManager ? global.statsManager.getTodayStats() : null,
+            
+            // 新增：计费信息
+            billing: global.statsManager ? global.statsManager.calculateBilling() : null,
+            
+            // 新增：URL统计（前10）
+            urlStats: global.statsManager ? global.statsManager.getTopUrlStats(10) : [],
+            
+            // 新增：IP统计（前10）
+            ipStats: global.statsManager ? global.statsManager.getTopIpStats(10) : [],
+            
+            // 全局队列统计
+            globalQueue: globalRequestManager.getDetailedStats(),
+
+            // 动态并发限制信息
+            dynamicLimit: globalRequestManager.getDynamicLimitInfo(),
+
+            // 系统压力等级
+            pressureLevel: memoryManager.getPressureLevel(),
+            
             // 活跃请求详情
             activeRequests: Array.from(global.monitoringData.activeRequests.values()).map(req => ({
                 id: req.id,
@@ -357,7 +524,13 @@ app.get('/api/monitor', (_, res) => {
             
             // 浏览器上下文信息
             browserContexts: global.browserContexts ? global.browserContexts.size : 0,
-            
+
+            // Turnstile上下文池统计
+            contextPool: (() => {
+                const pool = getContextPool();
+                return pool ? pool.getStats() : null;
+            })(),
+
             // 按服务分组的活跃请求
             activeRequestsByService: global.monitoringData.activeRequestsByService,
             
@@ -367,14 +540,60 @@ app.get('/api/monitor', (_, res) => {
         
         res.json(monitorData)
     } catch (error) {
-        console.error('Monitor API error:', error)
+        logger.error('API', `监控接口错误: ${error.message}`)
+        res.status(500).json({ error: 'Internal server error' })
+    }
+})
+
+// 计费统计API端点
+app.get('/api/billing', (_, res) => {
+    try {
+        const billingData = global.statsManager.calculateBilling()
+        
+        // 添加详细的计费统计信息
+        const detailedBilling = {
+            ...billingData,
+            // 计费规则说明
+            billingRule: {
+                rate: 0.6,
+                unit: 'per 1000 requests',
+                currency: 'USD',
+                includesFailedRequests: true
+            },
+            // 今日详细统计
+            todayDetails: {
+                date: global.monitoringData.dailyStats.date,
+                totalRequests: global.monitoringData.dailyStats.requests,
+                successfulRequests: global.monitoringData.dailyStats.successful,
+                failedRequests: global.monitoringData.dailyStats.failed,
+                billing: global.monitoringData.dailyStats.billing
+            },
+            // 历史统计
+            historicalData: {
+                totalBilling: global.monitoringData.historicalData.totalBilling,
+                allTimeRequests: global.monitoringData.totalRequests
+            },
+            // 时间戳
+            timestamp: new Date()
+        }
+        
+        res.json(detailedBilling)
+    } catch (error) {
+        logger.error('API', `计费接口错误: ${error.message}`)
         res.status(500).json({ error: 'Internal server error' })
     }
 })
 
 // 重置监控数据
 app.post('/api/monitor/reset', (_, res) => {
+    // 销毁旧的统计管理器
+    if (global.statsManager) {
+        global.statsManager.destroy()
+    }
+    
+    // 重置监控数据
     global.monitoringData = {
+        // 基础统计
         startTime: new Date(),
         totalRequests: 0,
         successfulRequests: 0,
@@ -383,26 +602,55 @@ app.post('/api/monitor/reset', (_, res) => {
         recentTokens: [],
         requestHistory: [],
         activeRequestsByService: {
-            cloudflare: 0,
-            hcaptcha: 0,
-            recaptchav2: 0,
-            recaptchav3: 0
+            cloudflare: 0
         },
-        lastRequestTime: new Date()
+        lastRequestTime: new Date(),
+        
+        // 新增统计字段
+        dailyStats: {
+            date: new Date().toDateString(),
+            requests: 0,
+            successful: 0,
+            failed: 0,
+            billing: 0
+        },
+        
+        // URL统计
+        urlStats: new Map(),
+        
+        // IP统计
+        ipStats: new Map(),
+        
+        // 历史数据
+        historicalData: {
+            totalBilling: 0,
+            urlHistory: {},
+            ipHistory: {}
+        }
     }
+    
+    // 重新初始化统计管理器
+    global.statsManager = new StatsManager()
+    
     res.json({ message: 'Monitor data reset successfully' })
 })
 
 // 服务重启端点
 app.post('/api/service/restart', async (_, res) => {
     try {
-        console.log('🔄 开始重启服务...')
+        logger.serverRestarting('手动触发')
         
         // 清理浏览器实例和上下文
         await cleanupBrowserInstances()
         
+        // 销毁旧的统计管理器
+        if (global.statsManager) {
+            global.statsManager.destroy()
+        }
+        
         // 重置监控数据
         global.monitoringData = {
+            // 基础统计
             startTime: new Date(),
             totalRequests: 0,
             successfulRequests: 0,
@@ -413,8 +661,33 @@ app.post('/api/service/restart', async (_, res) => {
             activeRequestsByService: {
                 cloudflare: 0
             },
-            lastRequestTime: new Date()
+            lastRequestTime: new Date(),
+            
+            // 新增统计字段
+            dailyStats: {
+                date: new Date().toDateString(),
+                requests: 0,
+                successful: 0,
+                failed: 0,
+                billing: 0
+            },
+            
+            // URL统计
+            urlStats: new Map(),
+            
+            // IP统计
+            ipStats: new Map(),
+            
+            // 历史数据
+            historicalData: {
+                totalBilling: 0,
+                urlHistory: {},
+                ipHistory: {}
+            }
         }
+        
+        // 重新初始化统计管理器
+        global.statsManager = new StatsManager()
         
         // 重置活跃请求计数
         global.activeRequestCount = 0
@@ -425,21 +698,21 @@ app.post('/api/service/restart', async (_, res) => {
         // 重新初始化浏览器（延迟执行避免阻塞响应）
         setTimeout(async () => {
             try {
-                console.log('🔄 等待系统稳定后重新初始化...')
-                
+                logger.debug('系统', '等待系统稳定后重新初始化...')
+
                 // 等待更长时间确保所有清理完成
                 await new Promise(resolve => setTimeout(resolve, 3000))
-                
+
                 // 重置重启标志
                 global.restarting = false
-                
+
                 if (process.env.SKIP_LAUNCH != 'true') {
-                    console.log('🚀 开始重新初始化浏览器...')
+                    logger.debug('系统', '开始重新初始化浏览器...')
                     await require('../captcha-solvers/turnstile/module/createBrowser')()
                 }
-                console.log('✅ 服务重启完成')
+                logger.info('系统', '服务重启完成')
             } catch (error) {
-                console.error('❌ 重新初始化浏览器失败:', error.message)
+                logger.error('系统', `重新初始化浏览器失败: ${error.message}`)
                 // 确保即使失败也重置标志
                 global.restarting = false
             }
@@ -452,9 +725,9 @@ app.post('/api/service/restart', async (_, res) => {
         })
         
     } catch (error) {
-        console.error('❌ 服务重启失败:', error.message)
-        res.status(500).json({ 
-            message: 'Service restart failed: ' + error.message 
+        logger.error('系统', `服务重启失败: ${error.message}`)
+        res.status(500).json({
+            message: 'Service restart failed: ' + error.message
         })
     }
 })
@@ -462,28 +735,28 @@ app.post('/api/service/restart', async (_, res) => {
 // 清理浏览器实例的函数
 async function cleanupBrowserInstances() {
     try {
-        console.log('🧹 清理浏览器实例和上下文...')
-        
+        logger.info('浏览器', '开始清理实例和上下文...')
+
         // 设置标志阻止自动重连
         global.restarting = true
-        
+
         // 清理浏览器上下文池
         if (global.contextPool && typeof global.contextPool.cleanup === 'function') {
             await global.contextPool.cleanup()
         }
-        
+
         // 清理全局浏览器上下文
         if (global.browserContexts) {
             for (const context of global.browserContexts.values()) {
                 try {
                     await context.close()
                 } catch (e) {
-                    console.warn('关闭上下文时出现警告:', e.message)
+                    logger.debug('上下文', `关闭时出现警告: ${e.message}`)
                 }
             }
             global.browserContexts.clear()
         }
-        
+
         // 清理全局浏览器实例
         if (global.browser) {
             try {
@@ -492,73 +765,76 @@ async function cleanupBrowserInstances() {
                 await global.browser.close()
                 global.browser = null
             } catch (e) {
-                console.warn('关闭浏览器时出现警告:', e.message)
+                logger.debug('浏览器', `关闭时出现警告: ${e.message}`)
             }
         }
-        
-        console.log('✅ 浏览器实例清理完成')
-        
+
+        logger.info('浏览器', '实例清理完成')
+
     } catch (error) {
-        console.error('❌ 清理浏览器实例失败:', error.message)
+        logger.error('浏览器', `清理实例失败: ${error.message}`)
         throw error
     }
 }
 
 // 启动自动重启检查
 function startAutoRestartCheck() {
-    console.log('🔄 启动自动重启检查 (6小时无请求后重启)')
-    
+    logger.info('系统', `启动自动重启检查 (${global.autoRestartConfig.idleTimeThreshold / (60 * 60 * 1000)}小时无请求后重启)`)
+
     global.autoRestartTimer = setInterval(async () => {
         try {
             const now = new Date()
             const timeSinceLastRequest = now.getTime() - global.monitoringData.lastRequestTime.getTime()
-            const timeSinceLastCheck = now.getTime() - global.autoRestartConfig.lastCheckTime.getTime()
-            
+
             // 更新检查时间
             global.autoRestartConfig.lastCheckTime = now
-            
+
             // 检查是否有活跃请求
             const hasActiveRequests = global.monitoringData.activeRequests.size > 0
-            
+
             // 如果有活跃请求，跳过重启检查
             if (hasActiveRequests) {
-                console.log('⏭️  跳过自动重启检查: 有活跃请求')
+                logger.debug('系统', '跳过自动重启检查: 有活跃请求')
                 return
             }
-            
+
             // 检查是否超过空闲时间阈值
             if (timeSinceLastRequest >= global.autoRestartConfig.idleTimeThreshold) {
-                console.log(`🔄 检测到服务空闲超过 ${global.autoRestartConfig.idleTimeThreshold / (60 * 60 * 1000)} 小时，开始自动重启...`)
-                console.log(`📊 最后请求时间: ${global.monitoringData.lastRequestTime.toLocaleString('zh-CN')}`)
-                console.log(`📊 当前时间: ${now.toLocaleString('zh-CN')}`)
-                console.log(`📊 空闲时间: ${Math.round(timeSinceLastRequest / (60 * 60 * 1000) * 10) / 10} 小时`)
-                
+                const idleHours = Math.round(timeSinceLastRequest / (60 * 60 * 1000) * 10) / 10
+                logger.info('系统', `服务空闲超过 ${idleHours} 小时，开始自动重启...`)
+
                 // 执行自动重启
                 await performAutoRestart()
-                
+
             } else {
                 const hoursUntilRestart = Math.round((global.autoRestartConfig.idleTimeThreshold - timeSinceLastRequest) / (60 * 60 * 1000) * 10) / 10
-                console.log(`✅ 自动重启检查: 服务正常，距离自动重启还有 ${hoursUntilRestart} 小时`)
+                logger.debug('系统', `自动重启检查: 服务正常，距离自动重启还有 ${hoursUntilRestart} 小时`)
             }
-            
+
         } catch (error) {
-            console.error('❌ 自动重启检查失败:', error.message)
+            logger.error('系统', `自动重启检查失败: ${error.message}`)
         }
     }, global.autoRestartConfig.checkInterval)
-    
-    console.log(`⏰ 自动重启检查已启动，每 ${global.autoRestartConfig.checkInterval / (60 * 1000)} 分钟检查一次`)
+
+    logger.debug('系统', `自动重启检查已启动，每 ${global.autoRestartConfig.checkInterval / (60 * 1000)} 分钟检查一次`)
 }
 
 // 执行自动重启
 async function performAutoRestart() {
     try {
-        console.log('🤖 执行自动重启...')
+        logger.serverRestarting('自动触发（空闲超时）')
         
         // 清理浏览器实例和上下文
         await cleanupBrowserInstances()
         
+        // 销毁旧的统计管理器
+        if (global.statsManager) {
+            global.statsManager.destroy()
+        }
+        
         // 重置监控数据
         global.monitoringData = {
+            // 基础统计
             startTime: new Date(),
             totalRequests: 0,
             successfulRequests: 0,
@@ -569,8 +845,33 @@ async function performAutoRestart() {
             activeRequestsByService: {
                 cloudflare: 0
             },
-            lastRequestTime: new Date()
+            lastRequestTime: new Date(),
+            
+            // 新增统计字段
+            dailyStats: {
+                date: new Date().toDateString(),
+                requests: 0,
+                successful: 0,
+                failed: 0,
+                billing: 0
+            },
+            
+            // URL统计
+            urlStats: new Map(),
+            
+            // IP统计
+            ipStats: new Map(),
+            
+            // 历史数据
+            historicalData: {
+                totalBilling: 0,
+                urlHistory: {},
+                ipHistory: {}
+            }
         }
+        
+        // 重新初始化统计管理器
+        global.statsManager = new StatsManager()
         
         // 重置活跃请求计数
         global.activeRequestCount = 0
@@ -581,30 +882,48 @@ async function performAutoRestart() {
         // 重新初始化浏览器
         setTimeout(async () => {
             try {
-                console.log('🔄 自动重启等待系统稳定后重新初始化...')
-                
+                logger.debug('系统', '自动重启等待系统稳定后重新初始化...')
+
                 // 等待更长时间确保所有清理完成
                 await new Promise(resolve => setTimeout(resolve, 3000))
-                
+
                 // 重置重启标志
                 global.restarting = false
-                
+
                 if (process.env.SKIP_LAUNCH != 'true') {
-                    console.log('🚀 自动重启开始重新初始化浏览器...')
+                    logger.debug('系统', '自动重启开始重新初始化浏览器...')
                     await require('../captcha-solvers/turnstile/module/createBrowser')()
                 }
-                console.log('✅ 自动重启完成')
+                logger.info('系统', '自动重启完成')
             } catch (error) {
-                console.error('❌ 自动重启重新初始化浏览器失败:', error.message)
+                logger.error('系统', `自动重启重新初始化浏览器失败: ${error.message}`)
                 // 确保即使失败也重置标志
                 global.restarting = false
             }
         }, 1000)
-        
+
     } catch (error) {
-        console.error('❌ 自动重启失败:', error.message)
+        logger.error('系统', `自动重启失败: ${error.message}`)
     }
 }
+
+// 队列状态API端点
+app.get('/api/queue-status', (_, res) => {
+    try {
+        // 获取站点队列统计
+        const siteQueueManager = require('../captcha-solvers/turnstile/utils/siteQueueManager');
+        
+        const queueStatus = {
+            global: globalRequestManager.getDetailedStats(),
+            sites: siteQueueManager.getStats(),
+            timestamp: new Date()
+        }
+        
+        res.json(queueStatus)
+    } catch (error) {
+        res.status(500).json({ error: error.message })
+    }
+})
 
 // 健康检查端点
 app.get('/health', (_, res) => {
@@ -614,15 +933,15 @@ app.get('/health', (_, res) => {
 app.use((_, res) => { res.status(404).json({ code: 404, message: 'Not Found' }) })
 
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
+  logger.error('系统', `未捕获异常: ${err.message}`);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('系统', `未处理的Promise拒绝: ${reason}`);
 });
 
 app.use((err, _, res, __) => {
-  console.error('Express error handler:', err);
+  logger.error('Express', `请求处理错误: ${err.message}`);
   res.status(500).json({
     code: 500,
     message: 'Internal Server Error',
@@ -638,6 +957,9 @@ function cleanup() {
     }
     if (global.autoRestartTimer) {
         clearInterval(global.autoRestartTimer)
+    }
+    if (global.statsManager) {
+        global.statsManager.destroy()
     }
 }
 

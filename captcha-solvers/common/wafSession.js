@@ -58,8 +58,8 @@ function getSource({ url, proxy }) {
 
       page = await context.newPage();
       
-      await page.setDefaultTimeout(30000);
-      await page.setDefaultNavigationTimeout(30000);
+      await page.setDefaultTimeout(90000);
+      await page.setDefaultNavigationTimeout(90000);
 
       if (proxy?.username && proxy?.password) {
         await page.authenticate({
@@ -114,7 +114,7 @@ function getSource({ url, proxy }) {
 
       await page.goto(url, {
         waitUntil: "domcontentloaded",
-        timeout: 30000
+        timeout: Number(process.env.PAGE_TIMEOUT) || global.timeOut || 90000
       });
       
     } catch (e) {

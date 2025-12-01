@@ -1,18 +1,91 @@
 const os = require('os');
+const logger = require('./logger');
 
 class MemoryManager {
     constructor() {
-        this.maxHeapUsage = Number(process.env.maxMemoryUsage) || 512; // MB
-        this.gcThreshold = 0.6; // 60% of max heap - 更积极的GC
-        this.forceGcThreshold = 0.8; // 80% of max heap - 降低强制GC阈值
-        this.monitoringInterval = 15000; // 15 seconds - 更频繁的监控
+        // 大幅提高内存阈值，适应高并发场景
+        this.maxHeapUsage = Number(process.env.MAX_MEMORY_USAGE) || 4096; // MB - 默认4GB
+        this.gcThreshold = 0.6; // 60% - 软GC阈值
+        this.forceGcThreshold = 0.8; // 80% - 强制GC阈值
+        this.criticalThreshold = 0.95; // 95% - 紧急模式（几乎不触发）
+        this.monitoringInterval = 10000; // 10秒 - 减少监控频率降低开销
         this.monitoring = false;
-        
-        // CPU监控相关 - 系统级监控
+
+        // 是否启用请求限流（默认关闭，压力测试时不限流）
+        this.enableRequestThrottling = process.env.ENABLE_MEMORY_THROTTLE === 'true';
+
+        // CPU监控相关
         this.cpuUsageHistory = [];
         this.maxCpuHistory = 20;
         this.lastSystemCpuTotal = null;
         this.lastSystemCpuIdle = null;
+
+        // 压力状态追踪
+        this.pressureLevel = 'normal'; // 'normal', 'moderate', 'high', 'critical'
+        this.lastGcTime = 0;
+        this.gcCooldown = 5000; // GC冷却时间5秒，避免频繁GC影响性能
+        this.consecutiveHighPressure = 0; // 连续高压次数
+
+        // 性能计数器
+        this.gcCount = 0;
+        this.contextCleanupCount = 0;
+    }
+
+    /**
+     * 获取当前压力等级
+     */
+    getPressureLevel() {
+        return this.pressureLevel;
+    }
+
+    /**
+     * 检查是否应该接受新请求（基于压力等级）
+     * 默认关闭限流，除非显式启用 ENABLE_MEMORY_THROTTLE=true
+     */
+    shouldAcceptRequest() {
+        // 默认不限流，让请求正常处理
+        if (!this.enableRequestThrottling) {
+            return { accept: true };
+        }
+
+        // 仅在显式启用限流时才执行压力检查
+        if (this.pressureLevel === 'critical') {
+            return { accept: false, reason: 'System under critical pressure' };
+        }
+        if (this.pressureLevel === 'high' && Math.random() > 0.7) {
+            return { accept: false, reason: 'System under high pressure, request throttled' };
+        }
+        return { accept: true };
+    }
+
+    /**
+     * 更新压力等级
+     * 使用更宽松的阈值，避免频繁触发压力状态
+     */
+    updatePressureLevel(heapUsagePercent, cpuUsage) {
+        const prevLevel = this.pressureLevel;
+
+        // 更宽松的阈值：只有在极端情况下才升级压力等级
+        if (heapUsagePercent > this.criticalThreshold && cpuUsage > 95) {
+            // 同时满足内存和CPU极高才进入critical
+            this.pressureLevel = 'critical';
+            this.consecutiveHighPressure++;
+        } else if (heapUsagePercent > this.forceGcThreshold && cpuUsage > 85) {
+            this.pressureLevel = 'high';
+            this.consecutiveHighPressure++;
+        } else if (heapUsagePercent > this.gcThreshold && cpuUsage > 70) {
+            this.pressureLevel = 'moderate';
+            this.consecutiveHighPressure = 0;
+        } else {
+            this.pressureLevel = 'normal';
+            this.consecutiveHighPressure = 0;
+        }
+
+        if (prevLevel !== this.pressureLevel) {
+            logger.pressureChanged(prevLevel, this.pressureLevel);
+        }
+
+        return this.pressureLevel;
     }
 
     startMonitoring() {
@@ -23,14 +96,14 @@ class MemoryManager {
             this.checkMemoryUsage();
         }, this.monitoringInterval);
 
-        console.log('Memory monitoring started');
+        logger.debug('内存', '监控已启动');
     }
 
     stopMonitoring() {
         if (this.monitorInterval) {
             clearInterval(this.monitorInterval);
             this.monitoring = false;
-            console.log('Memory monitoring stopped');
+            logger.debug('内存', '监控已停止');
         }
     }
 
@@ -42,23 +115,50 @@ class MemoryManager {
         const systemFreeMB = Math.round(os.freemem() / 1024 / 1024);
         const systemTotalMB = Math.round(os.totalmem() / 1024 / 1024);
 
-        // 使用配置的最大值来计算使用率，而不是动态的堆总量
+        // 使用配置的最大值来计算使用率
         const maxHeapMB = this.maxHeapUsage;
         const heapUsagePercent = maxHeapMB > 0 ? heapUsedMB / maxHeapMB : 0;
 
-        // 记录内存使用情况
-        if (heapUsagePercent > 0.7) {
-            console.log(`⚠️  High memory usage: ${heapUsedMB}MB/${maxHeapMB}MB (${Math.round(heapUsagePercent * 100)}%)`);
-            console.log(`   RSS: ${rssMB}MB, HeapTotal: ${heapTotalMB}MB`);
-            console.log(`   System: ${systemTotalMB - systemFreeMB}MB/${systemTotalMB}MB used`);
+        // 获取CPU使用率
+        const cpuStats = this.getCpuUsage();
+        const cpuUsage = cpuStats.current || 0;
+
+        // 更新压力等级
+        this.updatePressureLevel(heapUsagePercent, cpuUsage);
+
+        // 获取活跃请求数（如果有全局计数器）
+        const activeRequests = global.activeRequestCount || 0;
+        const browserContexts = global.browserContexts ? global.browserContexts.size : 0;
+
+        // 根据压力等级执行不同策略
+        const now = Date.now();
+        const canGc = (now - this.lastGcTime) > this.gcCooldown;
+
+        if (this.pressureLevel === 'critical') {
+            logger.memoryWarning('critical', heapUsedMB, maxHeapMB, Math.round(heapUsagePercent * 100));
+            if (canGc) {
+                this.emergencyCleanup();
+                this.lastGcTime = now;
+            }
+        } else if (this.pressureLevel === 'high') {
+            logger.memoryWarning('high', heapUsedMB, maxHeapMB, Math.round(heapUsagePercent * 100));
+            if (canGc) {
+                this.forceGarbageCollection();
+                this.cleanupBrowserContexts();
+                this.lastGcTime = now;
+            }
+        } else if (this.pressureLevel === 'moderate') {
+            if (canGc) {
+                this.softGarbageCollection();
+                this.lastGcTime = now;
+            }
         }
 
-        // 执行垃圾回收
-        if (heapUsagePercent > this.forceGcThreshold) {
-            this.forceGarbageCollection();
-            this.cleanupBrowserContexts();
-        } else if (heapUsagePercent > this.gcThreshold) {
-            this.softGarbageCollection();
+        // 如果连续高压超过5次，触发紧急清理
+        if (this.consecutiveHighPressure >= 5) {
+            logger.warn('内存', `连续${this.consecutiveHighPressure}次高压，触发紧急清理`);
+            this.emergencyCleanup();
+            this.consecutiveHighPressure = 0;
         }
 
         return {
@@ -66,79 +166,152 @@ class MemoryManager {
             heapTotalMB,
             rssMB,
             systemFreeMB,
-            heapUsagePercent
+            heapUsagePercent,
+            pressureLevel: this.pressureLevel,
+            cpuUsage,
+            browserContexts,
+            activeRequests
         };
     }
 
+    /**
+     * 紧急清理 - 在系统压力极高时执行
+     */
+    emergencyCleanup() {
+        logger.info('内存', '执行紧急清理...');
+
+        // 1. 强制GC
+        this.forceGarbageCollection();
+
+        // 2. 清理所有空闲的浏览器上下文
+        this.cleanupBrowserContexts(true); // 强制模式
+
+        // 3. 清理全局缓存
+        this.clearGlobalCaches();
+
+        // 4. 延迟再次GC
+        setTimeout(() => {
+            if (global.gc) {
+                try {
+                    global.gc();
+                    this.gcCount++;
+                    logger.gcExecuted('force');
+                } catch (e) {}
+            }
+        }, 500);
+
+        logger.info('内存', '紧急清理完成');
+    }
+
+    /**
+     * 清理全局缓存
+     */
+    clearGlobalCaches() {
+        // 清理监控数据中的历史记录（保留最少量）
+        if (global.monitoringData) {
+            if (global.monitoringData.recentTokens && global.monitoringData.recentTokens.length > 10) {
+                global.monitoringData.recentTokens = global.monitoringData.recentTokens.slice(0, 10);
+            }
+            if (global.monitoringData.requestHistory && global.monitoringData.requestHistory.length > 20) {
+                global.monitoringData.requestHistory = global.monitoringData.requestHistory.slice(0, 20);
+            }
+        }
+    }
+
     forceGarbageCollection() {
-        console.log('🔄 Forcing garbage collection due to high memory usage');
         if (global.gc) {
             try {
                 global.gc();
-                console.log('✅ Forced GC completed');
+                this.gcCount++;
+                logger.gcExecuted('force');
             } catch (e) {
-                console.error('❌ Failed to force GC:', e.message);
+                logger.error('GC', `执行失败: ${e.message}`);
             }
-        } else {
-            console.warn('⚠️  global.gc() not available. Start with --expose-gc flag');
         }
     }
 
     softGarbageCollection() {
-        // 在高并发情况下，更积极的GC策略
-        if (global.gc && Math.random() < 0.5) { // 50% chance
+        // 软GC - 使用setImmediate延迟执行，不阻塞主线程
+        if (global.gc) {
             setImmediate(() => {
                 try {
                     global.gc();
+                    this.gcCount++;
                 } catch (e) {}
             });
         }
     }
 
-    cleanupBrowserContexts() {
-        if (global.browserContexts && global.browserContexts.size > 0) {
-            console.log(`🧹 Cleaning up ${global.browserContexts.size} browser contexts`);
-            
-            const contextsToClean = Array.from(global.browserContexts);
-            let cleaned = 0;
-            
-            contextsToClean.forEach(async (context) => {
+    /**
+     * 清理浏览器上下文
+     * @param {boolean} force - 是否强制清理（不考虑是否正在使用）
+     */
+    cleanupBrowserContexts(force = false) {
+        if (!global.browserContexts || global.browserContexts.size === 0) {
+            return 0;
+        }
+
+        const contextCount = global.browserContexts.size;
+        logger.debug('上下文', `开始清理 (当前: ${contextCount}, 强制: ${force})`);
+
+        let cleaned = 0;
+        const contextsToClean = Array.from(global.browserContexts);
+
+        // 并行清理上下文
+        const cleanupPromises = contextsToClean.map(async (context) => {
+            try {
+                // 检查上下文是否有活跃页面
+                let pages = [];
                 try {
+                    pages = await context.pages();
+                } catch (e) {
+                    // 上下文可能已经无效
+                }
+
+                // 如果强制模式或没有活跃页面，则清理
+                if (force || pages.length === 0) {
                     await context.close().catch(() => {});
                     global.browserContexts.delete(context);
                     cleaned++;
-                } catch (e) {
-                    console.error('Error closing context:', e.message);
+                    this.contextCleanupCount++;
                 }
-            });
-            
-            if (cleaned > 0) {
-                console.log(`✅ Cleaned up ${cleaned} browser contexts`);
+            } catch (e) {
+                // 清理出错时直接从集合中移除
+                global.browserContexts.delete(context);
             }
-        }
+        });
+
+        // 不等待所有清理完成（异步执行）
+        Promise.all(cleanupPromises).then(() => {
+            if (cleaned > 0) {
+                logger.contextClosed(global.browserContexts ? global.browserContexts.size : 0);
+            }
+        });
+
+        return cleaned;
     }
 
     forceCleanup() {
-        console.log('🔧 执行强制内存清理...');
-        
+        logger.info('内存', '执行强制清理...');
+
         // 强制垃圾回收
         this.forceGarbageCollection();
-        
+
         // 清理浏览器上下文
         this.cleanupBrowserContexts();
-        
+
         // 额外的清理步骤
         if (global.gc) {
             // 多次调用GC确保彻底清理
             setTimeout(() => {
                 try {
                     global.gc();
-                    console.log('✅ 延迟GC完成');
+                    logger.gcExecuted('soft');
                 } catch (e) {}
             }, 1000);
         }
-        
-        console.log('✅ 强制内存清理完成');
+
+        logger.info('内存', '强制清理完成');
     }
 
     getCpuUsage() {
