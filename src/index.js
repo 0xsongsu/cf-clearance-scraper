@@ -72,9 +72,9 @@ global.monitoringData = {
 
 // 自动重启检查配置
 global.autoRestartConfig = {
-    enabled: true,
-    idleTimeThreshold: 6 * 60 * 60 * 1000, // 6小时（毫秒）
-    checkInterval: 30 * 60 * 1000, // 每30分钟检查一次
+    enabled: process.env.AUTO_RESTART_ENABLED !== 'false', // 默认启用
+    restartTime: process.env.AUTO_RESTART_TIME || '00:05', // 默认凌晨00:05
+    checkInterval: 60 * 1000, // 每1分钟检查一次
     lastCheckTime: new Date()
 }
 
@@ -779,36 +779,30 @@ async function cleanupBrowserInstances() {
 
 // 启动自动重启检查
 function startAutoRestartCheck() {
-    logger.info('系统', `启动自动重启检查 (${global.autoRestartConfig.idleTimeThreshold / (60 * 60 * 1000)}小时无请求后重启)`)
+    logger.info('系统', `启动定时自动重启检查 (每天 ${global.autoRestartConfig.restartTime} 自动重启)`)
 
     global.autoRestartTimer = setInterval(async () => {
         try {
             const now = new Date()
-            const timeSinceLastRequest = now.getTime() - global.monitoringData.lastRequestTime.getTime()
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 
             // 更新检查时间
             global.autoRestartConfig.lastCheckTime = now
 
-            // 检查是否有活跃请求
-            const hasActiveRequests = global.monitoringData.activeRequests.size > 0
+            // 检查是否到达设定的重启时间
+            if (currentTime === global.autoRestartConfig.restartTime) {
+                // 检查是否有活跃请求
+                const hasActiveRequests = global.monitoringData.activeRequests.size > 0
 
-            // 如果有活跃请求，跳过重启检查
-            if (hasActiveRequests) {
-                logger.debug('系统', '跳过自动重启检查: 有活跃请求')
-                return
-            }
+                if (hasActiveRequests) {
+                    logger.info('系统', `到达重启时间 ${currentTime}，但有 ${hasActiveRequests} 个活跃请求，延迟1分钟后重试`)
+                    return
+                }
 
-            // 检查是否超过空闲时间阈值
-            if (timeSinceLastRequest >= global.autoRestartConfig.idleTimeThreshold) {
-                const idleHours = Math.round(timeSinceLastRequest / (60 * 60 * 1000) * 10) / 10
-                logger.info('系统', `服务空闲超过 ${idleHours} 小时，开始自动重启...`)
+                logger.info('系统', `到达设定重启时间 ${currentTime}，开始自动重启...`)
 
                 // 执行自动重启
                 await performAutoRestart()
-
-            } else {
-                const hoursUntilRestart = Math.round((global.autoRestartConfig.idleTimeThreshold - timeSinceLastRequest) / (60 * 60 * 1000) * 10) / 10
-                logger.debug('系统', `自动重启检查: 服务正常，距离自动重启还有 ${hoursUntilRestart} 小时`)
             }
 
         } catch (error) {
@@ -816,13 +810,13 @@ function startAutoRestartCheck() {
         }
     }, global.autoRestartConfig.checkInterval)
 
-    logger.debug('系统', `自动重启检查已启动，每 ${global.autoRestartConfig.checkInterval / (60 * 1000)} 分钟检查一次`)
+    logger.debug('系统', `定时重启检查已启动，每 ${global.autoRestartConfig.checkInterval / 1000} 秒检查一次`)
 }
 
 // 执行自动重启
 async function performAutoRestart() {
     try {
-        logger.serverRestarting('自动触发（空闲超时）')
+        logger.serverRestarting('定时自动重启')
         
         // 清理浏览器实例和上下文
         await cleanupBrowserInstances()
